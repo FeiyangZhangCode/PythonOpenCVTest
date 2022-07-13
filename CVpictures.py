@@ -143,7 +143,7 @@ def get_distance(rgb_frame):
 
 # 开始主程序
 # 新建文件夹,读取时间作为文件名
-str_fileAddress = './TestData-1/'
+str_fileAddress = '../TestData-1/'
 str_fileHome = str_fileAddress + 'org/'
 str_Time = datetime.datetime.now().strftime('%Y%m%d-%H%M')
 file_rec = open(str_fileAddress + str_Time + '.txt', 'w', encoding='utf-8')
@@ -157,6 +157,7 @@ title_li = os.listdir(str_fileHome)
 title_li = sorted(title_li, key=lambda x: os.path.getmtime(os.path.join(str_fileHome, x)), reverse=False)
 loop_num = 0
 for title in title_li:
+    # print(title)
     loop_num = loop_num + 1
     str_Time = datetime.datetime.now().strftime('%H%M%S')
     file_rec.write(str_Time + ',' + str(loop_num) + ',' + title + '\n')
@@ -170,7 +171,6 @@ for title in title_li:
     if len(err0_mess) > 0:
         file_rec.write('Error Message:\n' + err0_mess)
         print('Error:\n' + err0_mess)
-    # print(title)
     cv2.imshow('Dis', frame0_distance)
     cv2.imwrite(str_fileAddress + title, frame0_distance)
 
