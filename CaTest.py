@@ -5,6 +5,7 @@ import datetime
 import multiprocessing as mp
 import os
 import CVFunc
+import INA219
 
 
 # 图像测距
@@ -123,13 +124,13 @@ def image_put(q, c_id, file_address):
         # print('cap.read()[0]:', cap.read()[0])
         ret, frame = cap.read()
         # print('ret:', ret)
-        frame = cv2.resize(frame, (1920, 1080))
+        # frame = cv2.resize(frame, (1920, 1080))
         # 抓取图片不成功再重新抓取
         if not ret:
             cap = cv2.VideoCapture(c_id)
             print('Get3', c_id)
             ret, frame = cap.read()
-            frame = cv2.resize(frame, (1920, 1080))
+            # frame = cv2.resize(frame, (1920, 1080))
         q.put(frame)
         # print('q.qsize():', q.qsize())
         q.get() if q.qsize() > 1 else time.sleep(0.01)
@@ -192,6 +193,21 @@ def distance_get(q, cap_id, file_address):
             print('Error ' + str(cap_id) + ':\n' + err_mess)
 
 
+# 开两个进程，分别读取UPS和Uart
+def ups_uart_get(q, cap_id, file_address):
+    if cap_id == 1:
+        file_rec = open(file_address + 'UPS.txt', 'a')
+    loop_num = 0
+    while True:
+        time.sleep(1)
+        loop_num += 1
+        if loop_num % 20 == 0 and cap_id == 1:
+            str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+            ina_mess = INA219.get_ina219_data()
+            print(str_time, str(loop_num), ina_mess)
+            file_rec.write(str_time + '   ' + str(loop_num) + '\n' + ina_mess)
+
+
 # 解决进程问题
 def run_multi_camera():
     # 新建文件夹,读取时间作为文件名
@@ -207,7 +223,7 @@ def run_multi_camera():
     camera_id_l = [0, 1, ]
 
     mp.set_start_method(method='spawn')  # init
-    queues = [mp.Queue(maxsize=2) for _ in camera_id_l]
+    queues = [mp.Queue(maxsize=3) for _ in camera_id_l]
 
     processes = []
     for queue, camera_id in zip(queues, camera_id_l):
@@ -215,6 +231,7 @@ def run_multi_camera():
         # processes.append(mp.Process(target=video_get, args=(queue, camera_id)))
         # processes.append(mp.Process(target=picture_get, args=(queue, camera_id, str_fileAddress)))
         processes.append(mp.Process(target=distance_get, args=(queue, camera_id, str_fileAddress)))
+        processes.append(mp.Process(target=ups_uart_get, args=(queue, camera_id, str_fileAddress)))
 
     for process in processes:
         process.daemon = True
