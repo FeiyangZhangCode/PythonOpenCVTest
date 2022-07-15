@@ -1,7 +1,7 @@
 import cv2
 import datetime
 import CVFunc
-import INA219
+# import INA219
 import os
 
 

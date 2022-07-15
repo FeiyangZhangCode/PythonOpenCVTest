@@ -214,4 +214,5 @@ def get_ina219_data():
     print("Percent:       {:3.1f}%".format(p))
     print("")
     str_mess = "Current:{:9.6f} A".format(current / 1000) + "; Power:{:6.3f} W".format(power) + "; Percent:{:3.1f}%".format(p) + '\n'
-    return str_mess
+    i_value = current / 1000
+    return str_mess, i_value
