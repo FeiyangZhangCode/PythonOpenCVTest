@@ -1,4 +1,4 @@
-# import queue
+import queue
 import cv2
 import time
 import datetime
@@ -8,6 +8,8 @@ import CVFunc
 # import INA219
 import sys
 import signal
+
+
 # import serial
 
 # se = serial.Serial('/dev/ttyTHS1', 9600, timeout=1)
@@ -189,7 +191,7 @@ def picture_get(q, cap_id, file_address):
 
 
 # 获得视频流帧数图片，测距
-def distance_get(q, cap_id, file_address):
+def distance_get(q, lock_ser, cap_id, file_address):
     loop_num = 0
     file_rec = open(file_address + str(cap_id) + '.txt', 'a')
     while True:
@@ -201,7 +203,9 @@ def distance_get(q, cap_id, file_address):
         # 保存图片
         # cv2.imwrite(file_address + str(cap_id) + '-' + str_Time + '.jpg', rgb_frame)
         cv2.imshow('C0', rgb_frame)
+        # 闭锁进行串口、屏幕和txt处理
         # 串口及屏幕输出
+        lock_ser.acquire()
         print('C' + str(cap_id) + '  ' + str_Time + '  ' + str(loop_num) + '\n')
         front_value = 'F' + str(ret_value[0]) + '\r\n'
         # se.write(front_value.encode())
@@ -220,6 +224,7 @@ def distance_get(q, cap_id, file_address):
         if len(err_mess) > 0:
             file_rec.write('Error:\n' + err_mess)
             # print('Error ' + str(cap_id) + ':\n' + err_mess)
+        lock_ser.release()
 
 
 # 开两个进程，分别读取UPS和Uart
@@ -283,13 +288,14 @@ def run_multi_camera():
 
     mp.set_start_method(method='spawn')  # init
     queues = [mp.Queue(maxsize=2) for _ in camera_id_l]
+    lock = mp.Lock()
 
     processes = []
     for queue, camera_id in zip(queues, camera_id_l):
         processes.append(mp.Process(target=image_put, args=(queue, camera_id, str_fileAddress)))
         # processes.append(mp.Process(target=video_get, args=(queue, camera_id)))
         # processes.append(mp.Process(target=picture_get, args=(queue, camera_id, str_fileAddress)))
-        processes.append(mp.Process(target=distance_get, args=(queue, camera_id, str_fileAddress)))
+        processes.append(mp.Process(target=distance_get, args=(queue, lock, camera_id, str_fileAddress)))
         # processes.append(mp.Process(target=ups_uart_get, args=(queue, camera_id, str_fileAddress)))
 
     for process in processes:
