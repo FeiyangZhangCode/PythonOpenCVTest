@@ -202,29 +202,29 @@ def distance_get(q, lock_ser, cap_id, file_address):
         frame_distance, ret_mess, err_mess, ret_value = get_distance(rgb_frame)
         # 保存图片
         # cv2.imwrite(file_address + str(cap_id) + '-' + str_Time + '.jpg', rgb_frame)
-        cv2.imshow('C0', rgb_frame)
+        cv2.imshow('C0', frame_distance)
         # 闭锁进行串口、屏幕和txt处理
         # 串口及屏幕输出
-        lock_ser.acquire()
-        print('C' + str(cap_id) + '  ' + str_Time + '  ' + str(loop_num) + '\n')
-        front_value = 'F' + str(ret_value[0]) + '\r\n'
-        # se.write(front_value.encode())
-        print(front_value)
-        left_value = 'L' + str(ret_value[1]) + '\r\n'
-        # se.write(left_value.encode())
-        print(left_value)
-        right_value = 'R' + str(ret_value[2]) + '\r\n'
-        # se.write(right_value.encode())
-        print(right_value)
+        # lock_ser.acquire()
+        # print('C' + str(cap_id) + '  ' + str_Time + '  ' + str(loop_num) + '\n')
+        # front_value = 'F' + str(ret_value[0]) + '\r\n'
+        # # se.write(front_value.encode())
+        # print(front_value)
+        # left_value = 'L' + str(ret_value[1]) + '\r\n'
+        # # se.write(left_value.encode())
+        # print(left_value)
+        # right_value = 'R' + str(ret_value[2]) + '\r\n'
+        # # se.write(right_value.encode())
+        # print(right_value)
         # 保存txt
-        file_rec.write(str_Time + '  ' + str(loop_num) + '\n')
-        if len(ret_mess) > 0:
-            file_rec.write('Data:\n' + ret_mess)
-            # print('Data ' + str(cap_id) + ':\n' + ret_mess)
-        if len(err_mess) > 0:
-            file_rec.write('Error:\n' + err_mess)
-            # print('Error ' + str(cap_id) + ':\n' + err_mess)
-        lock_ser.release()
+        # file_rec.write(str_Time + '  ' + str(loop_num) + '\n')
+        # if len(ret_mess) > 0:
+        #     file_rec.write('Data:\n' + ret_mess)
+        #     # print('Data ' + str(cap_id) + ':\n' + ret_mess)
+        # if len(err_mess) > 0:
+        #     file_rec.write('Error:\n' + err_mess)
+        #     # print('Error ' + str(cap_id) + ':\n' + err_mess)
+        # lock_ser.release()
 
 
 # 开两个进程，分别读取UPS和Uart

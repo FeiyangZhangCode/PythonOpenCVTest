@@ -8,7 +8,7 @@ import math
 def find_edge(img_org):
     gra_can_mix = np.zeros((img_org.shape[0], img_org.shape[1]), np.uint8)  # 创建个全0的黑背景
     for i in range(20, 120, 20):
-        for j in range(100, 450, 100):
+        for j in range(100, 450, 50):
             gra_can = cv2.Canny(img_org, i, j)
             # int_pixNum = cv2.countNonZero(gra_can)
             # print(i, j, int_pixNum)

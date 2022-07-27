@@ -118,7 +118,7 @@ file_rec = open(str_fileHome + str_Time + '.txt', 'w', encoding='utf-8')
 str_fileAddress = str_fileAddress + str_Time
 if not os.path.exists(str_fileAddress):
     os.makedirs(str_fileAddress)
-str_fileAddress += str_fileAddress + '/'
+str_fileAddress = str_fileAddress + '/'
 
 # 第一个摄像头0
 cap0 = cv2.VideoCapture(0)
@@ -141,7 +141,7 @@ while True:
     ret0, frame0 = cap0.read()
     # 存储原图
     # cv2.imwrite(str_fileAddress + str_Time + "-C0" + '.jpg', frame0)
-    file_rec.write(str_Time + ',' + str(loop_num) + ',C0' + '\n')
+    # file_rec.write(str_Time + ',' + str(loop_num) + ',C0' + '\n')
     # 运行边界识别子程序
     frame0_distance, ret0_mess, err0_mess = get_distance(frame0, 'C0:')
     if len(ret0_mess) > 0:
@@ -150,7 +150,7 @@ while True:
 
     if len(err0_mess) > 0:
         file_rec.write('Error Message:\n' + err0_mess)
-        print('Error:\n' + err0_mess)
+        # print('Error:\n' + err0_mess)
     # 存储边界图
     # cv2.imwrite(str_fileAddress + str_Time + "-C0D" + '.jpg', frame0_distance)
 
