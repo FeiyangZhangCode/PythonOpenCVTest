@@ -26,5 +26,6 @@ while True:
 
     cv2.line(frame, (0, mid_height), (img_width, mid_height), (0, 255, 0), 1)
     cv2.line(frame, (mid_width, 0), (mid_width, img_height), (0, 255, 0), 1)
+    cv2.circle(frame, (1006, 605), 5, (255, 0, 0), 3)
     cv2.imshow('Cap', frame)
 

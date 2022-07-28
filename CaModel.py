@@ -2,6 +2,7 @@ import cv2
 import CVFunc
 import numpy as np
 import math
+import datetime
 
 
 def getDist_P2P(x1_d, y1_d, x2_d, y2_d):
@@ -50,7 +51,15 @@ def get_red(img_rgb):
     return gra_red_temp
 
 
-def get_parameter(gra_edge):
+def get_parameter(img_frame):
+    a_calc = 0.0
+    b_calc = 0.0
+    # 提取红色线
+    gra_red = get_red(img_frame)
+
+    # Canny提取边界
+    gra_edge = cv2.Canny(gra_red, 70, 140)
+
     # 提取各类型线段
     gra_width_HLP = gra_edge.shape[1]
     mid_width_HLP = int(gra_width_HLP / 2)
@@ -65,7 +74,7 @@ def get_parameter(gra_edge):
             if getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 50.0:
                 # cv2.line(gra_lines, (x1, y1), (x2, y2), 255, 1)
                 if abs(y1_p - y2_p) < 2 and x2_p > int(gra_width_HLP / 4) and x1_p < int(gra_width_HLP * 3 / 4):
-                    cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
+                    # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
                     y_avg = int((y1_p + y2_p) / 2)
                     y_area[y_avg, 0] += abs(x1_p - x2_p)
                     if abs(x1_p - (gra_width_HLP / 2)) > abs(x2_p - (gra_width_HLP / 2)):
@@ -76,7 +85,8 @@ def get_parameter(gra_edge):
                     # print(y1, y2)
                     continue
                 elif abs(y1_p - y2_p) > 5:
-                    cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
+                    # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
+                    cv2.line(img_frame, (x1_p, y1_p), (x2_p, y2_p), (0, 255, 0), 1)
                     # num_lines += 1
                     w1_f = float(x1_p)
                     w2_f = float(x2_p)
@@ -152,73 +162,48 @@ def get_parameter(gra_edge):
     last_id = int(len(hor_height) - 1)
     if (temp_height - hor_height[last_id][0]) > 4:
         hor_height.append(temp_point)
+    for hor_height_point in hor_height:
+        cv2.line(img_frame, (0, hor_height_point[0] + mid_height), (img_width, hor_height_point[0] + mid_height),
+                 (255, 0, 0), 1)
 
-    return hor_height, ver_lines_org, ver_formulas_new[1], ver_formulas_new[2]
+    a_calc = ver_formulas_new[1][0] - ver_formulas_new[2][0]
+    b_calc = ver_formulas_new[1][1] - ver_formulas_new[2][1]
+    return a_calc, b_calc, img_frame
 
 
 # 开始主程序
-# 提取图像
-file_name = 'yaw2'
-rgb_frame = cv2.imread('./TestData/' + file_name + '.jpg')
+# 连接摄像头
+cap = cv2.VideoCapture(0)
+cap.set(6, 1196444237)
+cap.set(3, 1920)
+cap.set(4, 1080)
+cap.set(5, 30)
 # 获取图像位置参数
-img_test = rgb_frame.copy()
-img_height = int(img_test.shape[0])
-img_width = int(img_test.shape[1])
+img_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+img_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 mid_height = int(img_height / 2)
 mid_width = int(img_width / 2)
 
-# 提取红色线
-gra_red = get_red(img_test)
+# 录入焦距和间距
+model_f = int(input('焦距F'))
+model_w = int(input('间距W'))
 
-# Canny提取边界
-gra_edge = cv2.Canny(gra_red, 70, 140)
+while True:
+    ret, frame = cap.read()
 
-# 手动去除校准用红色区域
-# gra_edge[0:100, :] = 0
-# cv2.imshow('gra', gra_edge)
-cv2.imwrite('./TestData/' + file_name + '-gra.jpg', gra_edge)
-# 计算参数，返回水平线高度，垂直线HoughLinesP结果，从右向左的第3和第2条线的a和b值
-hor_lines_points, ver_lines, right_formular, left_formular = get_parameter(gra_edge)
+    if cv2.waitKey(1) & 0xFF == ord('c'):
+        str_time = datetime.datetime.now().strftime('%H%M%S')
+        str_address = './TestData/'
+        # cv2.imwrite(str_address + str_time + '.jpg', frame)
+        model_a, model_b, frame_lines = get_parameter(frame)
+        cv2.imshow('Lines', frame_lines)
+        print(model_f, model_w, model_a, model_b)
+    elif cv2.waitKey(1) & 0xFF == ord('q'):
+        break
 
-model_F = 1122
-model_W = 101
-model_a = right_formular[0] - left_formular[0]
-model_b = right_formular[1] - left_formular[1]
+    cv2.line(frame, (0, mid_height), (img_width, mid_height), (0, 255, 0), 1)
+    cv2.line(frame, (mid_width, 0), (mid_width, img_height), (0, 255, 0), 1)
+    cv2.circle(frame, (1006, 605), 5, (255, 0, 0), 3)
+    cv2.imshow('Cap', frame)
 
-print(model_a, model_b)
-
-cv2.line(img_test, (mid_width, 0), (mid_width, img_height), (255, 0, 255), 1)
-cv2.line(img_test, (0, mid_height), (img_width, mid_height), (255, 0, 255), 1)
-cv2.line(img_test, (1006, 0), (1006, img_height), (255, 255, 0), 1)
-cv2.line(img_test, (0, 605), (img_width, 605), (255, 255, 0), 1)
-
-# 计算水平线到相机的距离
-for hor_point in hor_lines_points:
-    dis_temp = calc_horizontal(hor_point[0], model_F, model_W, model_a, model_b)
-    dis_temp = round(dis_temp, 2)
-    cv2.line(img_test, (0, hor_point[0] + mid_height), (img_width, hor_point[0] + mid_height), (255, 0, 0), 1)
-    cv2.putText(img_test, str(dis_temp) + 'mm', (mid_width, hor_point[0] + mid_height), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                (255, 0, 0), 1)
-    # print(hor_point[0], dis_temp)
-
-# 计算垂直线到图像中轴的距离
-for ver_line in ver_lines:
-    for x1, y1, x2, y2 in ver_line:
-        dis_ver_1 = calc_vertical(abs(x1 - mid_width), y1, model_F, model_W, model_a, model_b)
-        dis_ver_2 = calc_vertical(abs(x2 - mid_width), y2, model_F, model_W, model_a, model_b)
-        dis_ver = (dis_ver_1 + dis_ver_2) / 2
-        # print(x1, y1, dis_ver_1)
-        # print(x2, y2, dis_ver_2)
-        x_ver = int((x1 + x2) / 2)
-        y_ver = int((y1 + y2) / 2)
-        cv2.line(img_test, (x1, y1 + mid_height), (x2, y2 + mid_height), (0, 255, 0), 1)
-        cv2.putText(img_test, str(round(dis_ver_1, 0)), (x1, y1 + mid_height), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                    (0, 255, 0), 1)
-        cv2.putText(img_test, str(round(dis_ver_2, 0)), (x2, y2 + mid_height), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                    (0, 255, 0), 1)
-
-cv2.imshow('test', img_test)
-cv2.imwrite('./TestData/' + file_name + '-dis.jpg', img_test)
-
-cv2.waitKey(0)
 cv2.destroyAllWindows()
