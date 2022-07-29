@@ -117,13 +117,17 @@ def get_parameter(gra_edge):
         temp_b_avg = round((b_sum / weight_sum), 4)
         ver_formulas_new.append([temp_a_avg, temp_b_avg])
 
-    # gra_lines_new = np.zeros((gra_edge.shape[0], gra_edge.shape[1]), np.uint8)  # 创建个全0的黑背景
-    # for ver_formula in ver_formulas_new:
-    #     h1 = 0
-    #     w1 = int(ver_formula[1])
-    #     h2 = 540
-    #     w2 = int(ver_formula[0] * h2 + ver_formula[1])
-    #     cv2.line(gra_lines_new, (w1, h1), (w2, h2), 255, 1)
+    formular_l = [0.0, 0.0]
+    formular_r = [0.0, 0.0]
+    for i in range(0, len(ver_formulas_new) - 1, 1):
+        a_r = ver_formulas_new[i][0]
+        a_l = ver_formulas_new[i + 1][0]
+        b_r = ver_formulas_new[i][1]
+        b_l = ver_formulas_new[i + 1][1]
+        if a_r > 0.0 and a_l < 0.0:
+            formular_l = [a_l, b_l]
+            formular_r = [a_r, b_r]
+            break
 
     # 水平线数组
     hor_height = []
@@ -153,12 +157,12 @@ def get_parameter(gra_edge):
     if (temp_height - hor_height[last_id][0]) > 4:
         hor_height.append(temp_point)
 
-    return hor_height, ver_lines_org, ver_formulas_new[1], ver_formulas_new[2]
+    return hor_height, ver_lines_org, formular_r, formular_l
 
 
 # 开始主程序
 # 提取图像
-file_name = 'yaw2'
+file_name = 'h59t0'
 rgb_frame = cv2.imread('./TestData/' + file_name + '.jpg')
 # 获取图像位置参数
 img_test = rgb_frame.copy()
@@ -174,25 +178,36 @@ gra_red = get_red(img_test)
 gra_edge = cv2.Canny(gra_red, 70, 140)
 
 # 手动去除校准用红色区域
-# gra_edge[0:100, :] = 0
+gra_edge[0:100, :] = 0
 # cv2.imshow('gra', gra_edge)
-cv2.imwrite('./TestData/' + file_name + '-gra.jpg', gra_edge)
+# cv2.imwrite('./TestData/' + file_name + '-gra.jpg', gra_edge)
 # 计算参数，返回水平线高度，垂直线HoughLinesP结果，从右向左的第3和第2条线的a和b值
 hor_lines_points, ver_lines, right_formular, left_formular = get_parameter(gra_edge)
 
-model_F = 1122
+model_F = 1120
 model_W = 101
 model_a = right_formular[0] - left_formular[0]
 model_b = right_formular[1] - left_formular[1]
+principal_x = 1006
+principal_y = 605
 
 print(model_a, model_b)
 
+# 画图像中心十字
 cv2.line(img_test, (mid_width, 0), (mid_width, img_height), (255, 0, 255), 1)
 cv2.line(img_test, (0, mid_height), (img_width, mid_height), (255, 0, 255), 1)
-cv2.line(img_test, (1006, 0), (1006, img_height), (255, 255, 0), 1)
-cv2.line(img_test, (0, 605), (img_width, 605), (255, 255, 0), 1)
+# 画相机中心十字
+cv2.line(img_test, (principal_x, 0), (principal_x, img_height), (255, 255, 0), 1)
+cv2.line(img_test, (0, principal_y), (img_width, principal_y), (255, 255, 0), 1)
+# 画标定垂线位置
+a_id_l = left_formular[0]
+b_id_l = left_formular[1]
+a_id_r = right_formular[0]
+b_id_r = right_formular[1]
+cv2.line(img_test, (int(b_id_l), mid_height), (int(a_id_l * 540 + b_id_l), 540 + mid_height), (0, 255, 255), 1)
+cv2.line(img_test, (int(b_id_r), mid_height), (int(a_id_r * 540 + b_id_r), 540 + mid_height), (0, 255, 255), 1)
 
-# 计算水平线到相机的距离
+# 计算水平线到相机的距离，并画出水平线
 for hor_point in hor_lines_points:
     dis_temp = calc_horizontal(hor_point[0], model_F, model_W, model_a, model_b)
     dis_temp = round(dis_temp, 2)
@@ -201,16 +216,16 @@ for hor_point in hor_lines_points:
                 (255, 0, 0), 1)
     # print(hor_point[0], dis_temp)
 
-# 计算垂直线到图像中轴的距离
+# 计算垂直线到图像中轴的距离，并画出垂直线
 for ver_line in ver_lines:
     for x1, y1, x2, y2 in ver_line:
-        dis_ver_1 = calc_vertical(abs(x1 - mid_width), y1, model_F, model_W, model_a, model_b)
-        dis_ver_2 = calc_vertical(abs(x2 - mid_width), y2, model_F, model_W, model_a, model_b)
-        dis_ver = (dis_ver_1 + dis_ver_2) / 2
+        dis_ver_1 = calc_vertical(abs(x1 - principal_x), y1, model_F, model_W, model_a, model_b)
+        dis_ver_2 = calc_vertical(abs(x2 - principal_x), y2, model_F, model_W, model_a, model_b)
+        # dis_ver = (dis_ver_1 + dis_ver_2) / 2
         # print(x1, y1, dis_ver_1)
         # print(x2, y2, dis_ver_2)
-        x_ver = int((x1 + x2) / 2)
-        y_ver = int((y1 + y2) / 2)
+        # x_ver = int((x1 + x2) / 2)
+        # y_ver = int((y1 + y2) / 2)
         cv2.line(img_test, (x1, y1 + mid_height), (x2, y2 + mid_height), (0, 255, 0), 1)
         cv2.putText(img_test, str(round(dis_ver_1, 0)), (x1, y1 + mid_height), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                     (0, 255, 0), 1)

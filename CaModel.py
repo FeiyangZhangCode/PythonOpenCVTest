@@ -86,7 +86,7 @@ def get_parameter(img_frame):
                     continue
                 elif abs(y1_p - y2_p) > 5:
                     # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
-                    cv2.line(img_frame, (x1_p, y1_p), (x2_p, y2_p), (0, 255, 0), 1)
+                    cv2.line(img_frame, (x1_p, y1_p + mid_height), (x2_p, y2_p + mid_height), (0, 255, 0), 1)
                     # num_lines += 1
                     w1_f = float(x1_p)
                     w2_f = float(x2_p)
@@ -127,14 +127,6 @@ def get_parameter(img_frame):
         temp_b_avg = round((b_sum / weight_sum), 4)
         ver_formulas_new.append([temp_a_avg, temp_b_avg])
 
-    # gra_lines_new = np.zeros((gra_edge.shape[0], gra_edge.shape[1]), np.uint8)  # 创建个全0的黑背景
-    # for ver_formula in ver_formulas_new:
-    #     h1 = 0
-    #     w1 = int(ver_formula[1])
-    #     h2 = 540
-    #     w2 = int(ver_formula[0] * h2 + ver_formula[1])
-    #     cv2.line(gra_lines_new, (w1, h1), (w2, h2), 255, 1)
-
     # 水平线数组
     hor_height = []
     temp_height = 0
@@ -162,12 +154,29 @@ def get_parameter(img_frame):
     last_id = int(len(hor_height) - 1)
     if (temp_height - hor_height[last_id][0]) > 4:
         hor_height.append(temp_point)
+
+    # 画出识别到的水平线
     for hor_height_point in hor_height:
         cv2.line(img_frame, (0, hor_height_point[0] + mid_height), (img_width, hor_height_point[0] + mid_height),
                  (255, 0, 0), 1)
 
-    a_calc = ver_formulas_new[1][0] - ver_formulas_new[2][0]
-    b_calc = ver_formulas_new[1][1] - ver_formulas_new[2][1]
+    # 计算a和b，画出用于标定的垂直线
+    a_calc = 0.0
+    b_calc = 0.0
+    for i in range(0, len(ver_formulas_new) - 1, 1):
+        a_r = ver_formulas_new[i][0]
+        a_l = ver_formulas_new[i + 1][0]
+        b_r = ver_formulas_new[i][1]
+        b_l = ver_formulas_new[i + 1][1]
+        if a_r > 0.0 and a_l < 0.0:
+            a_calc = round((a_r - a_l), 4)
+            b_calc = round((b_r - b_l), 4)
+            cv2.line(img_frame, (int(b_l), mid_height), (int(a_l * 540 + b_l), 540 + mid_height),
+                     (0, 255, 255), 1)
+            cv2.line(img_frame, (int(b_r), mid_height), (int(a_r * 540 + b_r), 540 + mid_height),
+                     (0, 255, 255), 1)
+            break
+
     return a_calc, b_calc, img_frame
 
 
@@ -184,9 +193,14 @@ img_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 mid_height = int(img_height / 2)
 mid_width = int(img_width / 2)
 
+# 打开模型参数存储文件
+file_rec = open('Model.txt', 'w', encoding='utf-8')
+
 # 录入焦距和间距
 model_f = int(input('焦距F'))
 model_w = int(input('间距W'))
+principal_x = int(input('相机x'))
+principal_y = int(input('相机y'))
 
 while True:
     ret, frame = cap.read()
@@ -196,14 +210,20 @@ while True:
         str_address = './TestData/'
         # cv2.imwrite(str_address + str_time + '.jpg', frame)
         model_a, model_b, frame_lines = get_parameter(frame)
+        cv2.line(frame_lines, (0, mid_height), (img_width, mid_height), (0, 255, 0), 1)
+        cv2.line(frame_lines, (mid_width, 0), (mid_width, img_height), (0, 255, 0), 1)
+        cv2.circle(frame_lines, (1092, 571), 5, (255, 0, 0), 3)
         cv2.imshow('Lines', frame_lines)
         print(model_f, model_w, model_a, model_b)
+        file_rec.write(str(model_f) + '\n' + str(model_w) + '\n' + str(model_a) + '\n' + str(model_b) + '\n' + str(principal_x) + '\n' + str(principal_y) + '\n')
     elif cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
     cv2.line(frame, (0, mid_height), (img_width, mid_height), (0, 255, 0), 1)
     cv2.line(frame, (mid_width, 0), (mid_width, img_height), (0, 255, 0), 1)
-    cv2.circle(frame, (1006, 605), 5, (255, 0, 0), 3)
+    # cv2.circle(frame, (principal_x, principal_y), 5, (255, 0, 0), 3)
     cv2.imshow('Cap', frame)
 
+file_rec.close()
+cap.release()
 cv2.destroyAllWindows()
