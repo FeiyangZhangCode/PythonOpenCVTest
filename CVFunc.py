@@ -4,6 +4,19 @@ import time
 import math
 
 
+# 计算水平线实际距离（2022-08-01）
+def calc_horizontal(int_height, f, w, a, b):
+    distance_hor = round((f * w / (a * int_height + b)), 0)
+    return distance_hor
+
+
+# 计算垂直线距离（2022-08-01
+def calc_vertical(int_width, int_height, f, w, a, b):
+    distance_ver = round((int_width * w / (a * int_height + b)), 0)
+    return distance_ver
+
+
+
 # 边缘检测算法（2022-06-30）
 def find_edge(img_org):
     gra_can_mix = np.zeros((img_org.shape[0], img_org.shape[1]), np.uint8)  # 创建个全0的黑背景

@@ -28,6 +28,7 @@ def get_camera_data(cap, num):
 
 # 图像测距
 def get_distance(rgb_frame, str_CID):
+    global model_F, model_W, model_a, model_b
     ret_mess = ''
     err_mess_all = ''
 
@@ -110,6 +111,17 @@ def get_distance(rgb_frame, str_CID):
 
 
 # 开始主程序
+# 读取模型参数
+file_model = open('Model.txt', 'r', encoding='utf-8')
+para_lines = file_model.readlines()
+model_F = float(para_lines[0].strip('\n'))
+model_W = float(para_lines[1].strip('\n'))
+model_a = float(para_lines[2].strip('\n'))
+model_b = float(para_lines[3].strip('\n'))
+principal_x = int(para_lines[4].strip('\n'))
+principal_y = int(para_lines[5].strip('\n'))
+file_model.close()
+
 # 新建文件夹,读取时间作为文件名
 str_fileAddress = './TestData/'
 str_fileHome = str_fileAddress

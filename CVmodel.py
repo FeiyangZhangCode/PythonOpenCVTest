@@ -24,27 +24,28 @@ def calc_vertical(int_width, int_height, f, w, a, b):
 
 def get_red(img_rgb):
     # 提取区域，下半部分
-    img_new = np.zeros((mid_height, img_width, 3), np.uint8)
-    for j in range(0, img_width, 1):
-        for i in range(0, mid_height, 1):
-            img_new[i, j] = img_rgb[i + mid_height, j]
-    img_red = img_new.copy()
+    # img_new = np.zeros((mid_height, img_width, 3), np.uint8)
+    # for j in range(0, img_width, 1):
+    #     for i in range(0, mid_height, 1):
+    #         img_new[i, j] = img_rgb[i + mid_height, j]
+    # img_red = img_new.copy()
+    img_new = np.zeros((img_height, img_width, 3), np.uint8)
     # 提取红色部分
     b_threshold = 100
     g_threshold = 100
     r_threshold = 130
-    b, g, r = cv2.split(img_new)
+    b, g, r = cv2.split(img_rgb)
     for j_ut in range(0, img_width, 1):
-        for i_ut in range(0, mid_height, 1):
+        for i_ut in range(0, img_height, 1):
             b_value = b[i_ut, j_ut]
             g_value = g[i_ut, j_ut]
             r_value = r[i_ut, j_ut]
             if b_value < b_threshold and g_value < g_threshold and r_value > r_threshold:
-                img_red[i_ut, j_ut] = img_new[i_ut, j_ut]
+                img_new[i_ut, j_ut] = img_rgb[i_ut, j_ut]
             else:
-                img_red[i_ut, j_ut] = (0, 0, 0)
+                img_new[i_ut, j_ut] = (0, 0, 0)
     # 二值化，去噪点
-    gra_red_temp = cv2.cvtColor(img_red, cv2.COLOR_BGR2GRAY)
+    gra_red_temp = cv2.cvtColor(img_new, cv2.COLOR_BGR2GRAY)
     ret, gra_red_temp = cv2.threshold(gra_red_temp, 10, 255, cv2.THRESH_BINARY)
     gra_red_temp = CVFunc.func_noise_1(gra_red_temp, 400)
     return gra_red_temp
@@ -162,7 +163,11 @@ def get_parameter(gra_edge):
 
 # 开始主程序
 # 提取图像
-file_name = 'h59t0'
+model_F = 1120
+model_W = 101
+principal_x = 1006
+principal_y = 607
+file_name = 'h0t0'
 rgb_frame = cv2.imread('./TestData/' + file_name + '.jpg')
 # 获取图像位置参数
 img_test = rgb_frame.copy()
@@ -178,18 +183,14 @@ gra_red = get_red(img_test)
 gra_edge = cv2.Canny(gra_red, 70, 140)
 
 # 手动去除校准用红色区域
-gra_edge[0:100, :] = 0
+gra_edge[0:principal_y+100, :] = 0
 # cv2.imshow('gra', gra_edge)
 # cv2.imwrite('./TestData/' + file_name + '-gra.jpg', gra_edge)
 # 计算参数，返回水平线高度，垂直线HoughLinesP结果，从右向左的第3和第2条线的a和b值
 hor_lines_points, ver_lines, right_formular, left_formular = get_parameter(gra_edge)
 
-model_F = 1120
-model_W = 101
 model_a = right_formular[0] - left_formular[0]
 model_b = right_formular[1] - left_formular[1]
-principal_x = 1006
-principal_y = 605
 
 print(model_a, model_b)
 
@@ -204,15 +205,15 @@ a_id_l = left_formular[0]
 b_id_l = left_formular[1]
 a_id_r = right_formular[0]
 b_id_r = right_formular[1]
-cv2.line(img_test, (int(b_id_l), mid_height), (int(a_id_l * 540 + b_id_l), 540 + mid_height), (0, 255, 255), 1)
-cv2.line(img_test, (int(b_id_r), mid_height), (int(a_id_r * 540 + b_id_r), 540 + mid_height), (0, 255, 255), 1)
+cv2.line(img_test, (int(a_id_l * mid_height + b_id_l), mid_height), (int(a_id_l * img_height + b_id_l), img_height), (0, 255, 255), 1)
+cv2.line(img_test, (int(a_id_r * mid_height + b_id_r), mid_height), (int(a_id_r * img_height + b_id_r), img_height), (0, 255, 255), 1)
 
 # 计算水平线到相机的距离，并画出水平线
 for hor_point in hor_lines_points:
     dis_temp = calc_horizontal(hor_point[0], model_F, model_W, model_a, model_b)
     dis_temp = round(dis_temp, 2)
-    cv2.line(img_test, (0, hor_point[0] + mid_height), (img_width, hor_point[0] + mid_height), (255, 0, 0), 1)
-    cv2.putText(img_test, str(dis_temp) + 'mm', (mid_width, hor_point[0] + mid_height), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+    cv2.line(img_test, (0, hor_point[0]), (img_width, hor_point[0]), (255, 0, 0), 1)
+    cv2.putText(img_test, str(dis_temp) + 'mm', (mid_width, hor_point[0]), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                 (255, 0, 0), 1)
     # print(hor_point[0], dis_temp)
 
@@ -226,14 +227,14 @@ for ver_line in ver_lines:
         # print(x2, y2, dis_ver_2)
         # x_ver = int((x1 + x2) / 2)
         # y_ver = int((y1 + y2) / 2)
-        cv2.line(img_test, (x1, y1 + mid_height), (x2, y2 + mid_height), (0, 255, 0), 1)
-        cv2.putText(img_test, str(round(dis_ver_1, 0)), (x1, y1 + mid_height), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+        cv2.line(img_test, (x1, y1), (x2, y2), (0, 255, 0), 1)
+        cv2.putText(img_test, str(round(dis_ver_1, 0)), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                     (0, 255, 0), 1)
-        cv2.putText(img_test, str(round(dis_ver_2, 0)), (x2, y2 + mid_height), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+        cv2.putText(img_test, str(round(dis_ver_2, 0)), (x2, y2), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                     (0, 255, 0), 1)
 
 cv2.imshow('test', img_test)
-cv2.imwrite('./TestData/' + file_name + '-dis.jpg', img_test)
+# cv2.imwrite('./TestData/' + file_name + '-dis.jpg', img_test)
 
 cv2.waitKey(0)
 cv2.destroyAllWindows()

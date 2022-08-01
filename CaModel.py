@@ -25,32 +25,34 @@ def calc_vertical(int_width, int_height, f, w, a, b):
 
 def get_red(img_rgb):
     # 提取区域，下半部分
-    img_new = np.zeros((mid_height, img_width, 3), np.uint8)
-    for j in range(0, img_width, 1):
-        for i in range(0, mid_height, 1):
-            img_new[i, j] = img_rgb[i + mid_height, j]
-    img_red = img_new.copy()
+    # img_new = np.zeros((mid_height, img_width, 3), np.uint8)
+    # for j in range(0, img_width, 1):
+    #     for i in range(0, mid_height, 1):
+    #         img_new[i, j] = img_rgb[i + mid_height, j]
+    # img_red = img_new.copy()
+    img_new = np.zeros((img_height, img_width, 3), np.uint8)
     # 提取红色部分
     b_threshold = 100
     g_threshold = 100
     r_threshold = 130
-    b, g, r = cv2.split(img_new)
+    b, g, r = cv2.split(img_rgb)
     for j_ut in range(0, img_width, 1):
-        for i_ut in range(0, mid_height, 1):
+        for i_ut in range(0, img_height, 1):
             b_value = b[i_ut, j_ut]
             g_value = g[i_ut, j_ut]
             r_value = r[i_ut, j_ut]
             if b_value < b_threshold and g_value < g_threshold and r_value > r_threshold:
-                img_red[i_ut, j_ut] = img_new[i_ut, j_ut]
+                img_new[i_ut, j_ut] = img_rgb[i_ut, j_ut]
             else:
-                img_red[i_ut, j_ut] = (0, 0, 0)
+                img_new[i_ut, j_ut] = (0, 0, 0)
     # 二值化，去噪点
-    gra_red_temp = cv2.cvtColor(img_red, cv2.COLOR_BGR2GRAY)
+    gra_red_temp = cv2.cvtColor(img_new, cv2.COLOR_BGR2GRAY)
     ret, gra_red_temp = cv2.threshold(gra_red_temp, 10, 255, cv2.THRESH_BINARY)
     gra_red_temp = CVFunc.func_noise_1(gra_red_temp, 400)
     return gra_red_temp
 
 
+# 计算模型参数，返回a、b值
 def get_parameter(img_frame):
     a_calc = 0.0
     b_calc = 0.0
@@ -171,9 +173,9 @@ def get_parameter(img_frame):
         if a_r > 0.0 and a_l < 0.0:
             a_calc = round((a_r - a_l), 4)
             b_calc = round((b_r - b_l), 4)
-            cv2.line(img_frame, (int(b_l), mid_height), (int(a_l * 540 + b_l), 540 + mid_height),
+            cv2.line(img_frame, (int(a_l * mid_height + b_l), mid_height), (int(a_l * img_height + b_l), img_height),
                      (0, 255, 255), 1)
-            cv2.line(img_frame, (int(b_r), mid_height), (int(a_r * 540 + b_r), 540 + mid_height),
+            cv2.line(img_frame, (int(a_r * mid_height + b_r), mid_height), (int(a_r * img_height + b_r), img_height),
                      (0, 255, 255), 1)
             break
 
@@ -208,20 +210,26 @@ while True:
     if cv2.waitKey(1) & 0xFF == ord('c'):
         str_time = datetime.datetime.now().strftime('%H%M%S')
         str_address = './TestData/'
-        # cv2.imwrite(str_address + str_time + '.jpg', frame)
+        # 存储原图
+        cv2.imwrite(str_address + 'Cali-' + str_time + '.jpg', frame)
+        # 计算参数
         model_a, model_b, frame_lines = get_parameter(frame)
+        # 画图像十字线
         cv2.line(frame_lines, (0, mid_height), (img_width, mid_height), (0, 255, 0), 1)
         cv2.line(frame_lines, (mid_width, 0), (mid_width, img_height), (0, 255, 0), 1)
-        cv2.circle(frame_lines, (1092, 571), 5, (255, 0, 0), 3)
+        # 画相机中点
+        cv2.circle(frame_lines, (principal_x, principal_y), 5, (255, 0, 0), 3)
+
         cv2.imshow('Lines', frame_lines)
         print(model_f, model_w, model_a, model_b)
-        file_rec.write(str(model_f) + '\n' + str(model_w) + '\n' + str(model_a) + '\n' + str(model_b) + '\n' + str(principal_x) + '\n' + str(principal_y) + '\n')
+        file_rec.write(str(model_f) + '\n' + str(model_w) + '\n' + str(model_a) + '\n' + str(model_b) + '\n' +
+                       str(principal_x) + '\n' + str(principal_y) + '\n')
     elif cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
     cv2.line(frame, (0, mid_height), (img_width, mid_height), (0, 255, 0), 1)
     cv2.line(frame, (mid_width, 0), (mid_width, img_height), (0, 255, 0), 1)
-    # cv2.circle(frame, (principal_x, principal_y), 5, (255, 0, 0), 3)
+    cv2.circle(frame, (principal_x, principal_y), 5, (255, 0, 0), 3)
     cv2.imshow('Cap', frame)
 
 file_rec.close()

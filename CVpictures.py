@@ -22,6 +22,8 @@ def get_current_time():
 
 # 图像测距
 def get_distance(rgb_frame):
+    global model_F, model_W, model_a, model_b, principal_x, principal_y
+
     ret_mess = ''
     err_mess_all = ''
 
@@ -55,9 +57,12 @@ def get_distance(rgb_frame):
         # file_rec.write(str_CID + err_mess + '\n')
     else:
         cv2.line(rgb_rot, (1, int(height_nearest)), (img_width - 1, int(height_nearest)), (0, 0, 255), 1)
+        dis_hor = CVFunc.calc_horizontal(int(height_nearest), model_F, model_W, model_a, model_b)
+        cv2.putText(rgb_rot, str(dis_hor) + 'mm', (mid_width, int(height_nearest)), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (0, 0, 255), 1)
         # print('前向距离%d像素\n' % height_nearest)
         # file_rec.write(str_CID + 'F,' + str(height_nearest) + '\n')
-        ret_mess += 'F,' + str(height_nearest) + '\n'
+        ret_mess += 'F,' + str(dis_hor) + '\n'
 
     # 查找最近左右垂直线
     axis_left_near, axis_right_near, angle_left_near, angle_right_near, err_mess, ver_time_mess = CVFunc.nearest_vertical_2(
@@ -70,78 +75,131 @@ def get_distance(rgb_frame):
         # file_rec.write(str_CID + err_mess + '\n')
     else:
         if abs(angle_left_near) > 0.0:
-            # 画延长线
-            line_left_near = CVFunc.func_extension_line(axis_left_near[0], axis_left_near[1], axis_left_near[2],
-                                                        axis_left_near[3], 'l', img_height, img_width)
-            cv2.line(rgb_rot, (line_left_near[0], line_left_near[1]), (line_left_near[2], line_left_near[3]),
-                     (0, 255, 0), 1)
-
-            # 计算直线方程
-            a_left = (axis_left_near[1] - axis_left_near[3]) / (axis_left_near[0] - axis_left_near[2])
-            b_left = axis_left_near[1] - (a_left * axis_left_near[0])
-            # print('左侧角度%0.4f°，公式y=%0.2fx+%0.2f' % (angle_left_near, a_left, b_left))
-            # file_rec.write(str_CID + 'L,%0.4f,y=%0.2fx+%0.2f\n' % (angle_left_near, a_left, b_left))
-            ret_mess += 'L 1 ,%0.4f,y=%0.2fx+%0.2f\n' % (angle_left_near, a_left, b_left)
+            # 计算距离并画线
+            dis_l_1 = CVFunc.calc_vertical(abs(axis_left_near[0] - principal_x), axis_left_near[1], model_F, model_W, model_a, model_b)
+            dis_l_2 = CVFunc.calc_vertical(abs(axis_left_near[2] - principal_x), axis_left_near[3], model_F, model_W, model_a, model_b)
+            cv2.line(rgb_rot, (axis_left_near[0], axis_left_near[1]), (axis_left_near[2], axis_left_near[3]), (0, 255, 0), 1)
+            cv2.putText(rgb_rot, str(round(dis_l_1, 0)), (axis_left_near[0], axis_left_near[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                        (0, 255, 0), 1)
+            cv2.putText(rgb_rot, str(round(dis_l_2, 0)), (axis_left_near[2], axis_left_near[3]), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                        (0, 255, 0), 1)
+            ret_mess += 'L1,' + str(round(dis_l_1, 0)) + ',' + str(round(dis_l_1, 0)) + '\n'
+            # # 画延长线
+            # line_left_near = CVFunc.func_extension_line(axis_left_near[0], axis_left_near[1], axis_left_near[2],
+            #                                             axis_left_near[3], 'l', img_height, img_width)
+            # cv2.line(rgb_rot, (line_left_near[0], line_left_near[1]), (line_left_near[2], line_left_near[3]),
+            #          (0, 255, 0), 1)
+            #
+            # # 计算直线方程
+            # a_left = (axis_left_near[1] - axis_left_near[3]) / (axis_left_near[0] - axis_left_near[2])
+            # b_left = axis_left_near[1] - (a_left * axis_left_near[0])
+            # # print('左侧角度%0.4f°，公式y=%0.2fx+%0.2f' % (angle_left_near, a_left, b_left))
+            # # file_rec.write(str_CID + 'L,%0.4f,y=%0.2fx+%0.2f\n' % (angle_left_near, a_left, b_left))
+            # ret_mess += 'L 1 ,%0.4f,y=%0.2fx+%0.2f\n' % (angle_left_near, a_left, b_left)
         else:
             # print('左侧未找到垂直线')
             # file_rec.write(str_CID + 'Not found Left ')
             err_mess_all += 'Not found Left 1\n'
 
-        if (axis_left_near[4] - axis_left_near[6]) != 0:
-            # 画延长线
-            line_left_near_1 = CVFunc.func_extension_line(axis_left_near[4], axis_left_near[5], axis_left_near[6],
-                                                          axis_left_near[7], 'l', img_height, img_width)
-            cv2.line(rgb_rot, (line_left_near_1[0], line_left_near_1[1]), (line_left_near_1[2], line_left_near_1[3]),
-                     (255, 0, 0), 1)
-            # 计算直线方程
-            a_left_1 = (axis_left_near[5] - axis_left_near[7]) / (axis_left_near[4] - axis_left_near[6])
-            b_left_1 = axis_left_near[5] - (a_left_1 * axis_left_near[4])
-            # print('左侧角度%0.4f°，公式y=%0.2fx+%0.2f' % (angle_left_near, a_left, b_left))
-            # file_rec.write(str_CID + 'L,%0.4f,y=%0.2fx+%0.2f\n' % (angle_left_near, a_left, b_left))
-            ret_mess += 'L 2 ,y=%0.2fx+%0.2f\n' % (a_left_1, b_left_1)
-        else:
-            # print('左侧未找到垂直线')
-            # file_rec.write(str_CID + 'Not found Left ')
-            err_mess_all += 'Not found Left 2\n'
+        # if (axis_left_near[4] - axis_left_near[6]) != 0:
+        #     # 计算距离并画线
+        #     dis_l_1 = CVFunc.calc_vertical(abs(axis_left_near[4] - principal_x), axis_left_near[5], model_F, model_W,
+        #                                    model_a, model_b)
+        #     dis_l_2 = CVFunc.calc_vertical(abs(axis_left_near[6] - principal_x), axis_left_near[7], model_F, model_W,
+        #                                    model_a, model_b)
+        #     cv2.line(rgb_rot, (axis_left_near[4], axis_left_near[5]), (axis_left_near[6], axis_left_near[7]),
+        #              (0, 255, 0), 1)
+        #     cv2.putText(rgb_rot, str(round(dis_l_1, 0)), (axis_left_near[4], axis_left_near[5]),
+        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 1)
+        #     cv2.putText(rgb_rot, str(round(dis_l_2, 0)), (axis_left_near[6], axis_left_near[7]),
+        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 1)
+        #     ret_mess += 'L2,' + str(round(dis_l_1, 0)) + ',' + str(round(dis_l_2, 0)) + '\n'
+        #     # # 画延长线
+        #     # line_left_near_1 = CVFunc.func_extension_line(axis_left_near[4], axis_left_near[5], axis_left_near[6],
+        #     #                                               axis_left_near[7], 'l', img_height, img_width)
+        #     # cv2.line(rgb_rot, (line_left_near_1[0], line_left_near_1[1]), (line_left_near_1[2], line_left_near_1[3]),
+        #     #          (255, 0, 0), 1)
+        #     # # 计算直线方程
+        #     # a_left_1 = (axis_left_near[5] - axis_left_near[7]) / (axis_left_near[4] - axis_left_near[6])
+        #     # b_left_1 = axis_left_near[5] - (a_left_1 * axis_left_near[4])
+        #     # # print('左侧角度%0.4f°，公式y=%0.2fx+%0.2f' % (angle_left_near, a_left, b_left))
+        #     # # file_rec.write(str_CID + 'L,%0.4f,y=%0.2fx+%0.2f\n' % (angle_left_near, a_left, b_left))
+        #     # ret_mess += 'L 2 ,y=%0.2fx+%0.2f\n' % (a_left_1, b_left_1)
+        # else:
+        #     # print('左侧未找到垂直线')
+        #     # file_rec.write(str_CID + 'Not found Left ')
+        #     err_mess_all += 'Not found Left 2\n'
 
         if abs(angle_right_near) > 0.0:
-            # 画延长线
-            line_right_near = CVFunc.func_extension_line(axis_right_near[0], axis_right_near[1], axis_right_near[2],
-                                                         axis_right_near[3], 'r', img_height, img_width)
-            cv2.line(rgb_rot, (line_right_near[0], line_right_near[1]), (line_right_near[2], line_right_near[3]),
-                     (0, 255, 0), 1)
-            # 计算直线方程
-            a_right = (axis_right_near[1] - axis_right_near[3]) / (axis_right_near[0] - axis_right_near[2])
-            b_right = axis_right_near[1] - (a_right * axis_right_near[0])
-            # print('右侧角度%0.4f°，公式y=%0.2fx+%0.2f' % (angle_right_near, a_right, b_right))
-            # file_rec.write(str_CID + 'R,%0.4f,y=%0.2fx+%0.2f\n' % (angle_right_near, a_right, b_right))
-            ret_mess += 'R 1 ,%0.4f,y=%0.2fx+%0.2f\n' % (angle_right_near, a_right, b_right)
+            # 计算距离并画线
+            dis_r_1 = CVFunc.calc_vertical(abs(axis_right_near[0] - principal_x), axis_right_near[1], model_F, model_W, model_a, model_b)
+            dis_r_2 = CVFunc.calc_vertical(abs(axis_right_near[2] - principal_x), axis_right_near[3], model_F, model_W, model_a, model_b)
+            cv2.line(rgb_rot, (axis_right_near[0], axis_right_near[1]), (axis_right_near[2], axis_right_near[3]), (255, 0, 0), 1)
+            cv2.putText(rgb_rot, str(round(dis_r_1, 0)), (axis_right_near[0], axis_right_near[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                        (255, 0, 0), 1)
+            cv2.putText(rgb_rot, str(round(dis_r_2, 0)), (axis_right_near[2], axis_right_near[3]), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                        (255, 0, 0), 1)
+            ret_mess += 'R1,' + str(round(dis_r_1, 0)) + ',' + str(round(dis_r_2, 0)) + '\n'
+            # # 画延长线
+            # line_right_near = CVFunc.func_extension_line(axis_right_near[0], axis_right_near[1], axis_right_near[2],
+            #                                              axis_right_near[3], 'r', img_height, img_width)
+            # cv2.line(rgb_rot, (line_right_near[0], line_right_near[1]), (line_right_near[2], line_right_near[3]),
+            #          (0, 255, 0), 1)
+            # # 计算直线方程
+            # a_right = (axis_right_near[1] - axis_right_near[3]) / (axis_right_near[0] - axis_right_near[2])
+            # b_right = axis_right_near[1] - (a_right * axis_right_near[0])
+            # # print('右侧角度%0.4f°，公式y=%0.2fx+%0.2f' % (angle_right_near, a_right, b_right))
+            # # file_rec.write(str_CID + 'R,%0.4f,y=%0.2fx+%0.2f\n' % (angle_right_near, a_right, b_right))
+            # ret_mess += 'R 1 ,%0.4f,y=%0.2fx+%0.2f\n' % (angle_right_near, a_right, b_right)
         else:
             err_mess_all += 'Not found right 1\n'
             # print('右侧未找到垂直线')
             # file_rec.write(str_CID + 'Not found right\n')
 
-        if (axis_right_near[4] - axis_right_near[6]) != 0:
-            # 画延长线
-            line_right_near_1 = CVFunc.func_extension_line(axis_right_near[4], axis_right_near[5], axis_right_near[6],
-                                                           axis_right_near[7], 'r', img_height, img_width)
-            cv2.line(rgb_rot, (line_right_near_1[0], line_right_near_1[1]),
-                     (line_right_near_1[2], line_right_near_1[3]), (255, 0, 0), 1)
-            # 计算直线方程
-            a_right_2 = (axis_right_near[1] - axis_right_near[3]) / (axis_right_near[0] - axis_right_near[2])
-            b_right_2 = axis_right_near[1] - (a_right_2 * axis_right_near[0])
-            # print('右侧角度%0.4f°，公式y=%0.2fx+%0.2f' % (angle_right_near, a_right, b_right))
-            # file_rec.write(str_CID + 'R,%0.4f,y=%0.2fx+%0.2f\n' % (angle_right_near, a_right, b_right))
-            ret_mess += 'R 2 ,y=%0.2fx+%0.2f\n' % (a_right_2, b_right_2)
-        else:
-            err_mess_all += 'Not found right 2\n'
-            # print('右侧未找到垂直线')
-            # file_rec.write(str_CID + 'Not found right\n')
+        # if (axis_right_near[4] - axis_right_near[6]) != 0:
+        #     # 计算距离并画线
+        #     dis_r_1 = CVFunc.calc_vertical(abs(axis_right_near[4] - principal_x), axis_right_near[5], model_F, model_W,
+        #                                    model_a, model_b)
+        #     dis_r_2 = CVFunc.calc_vertical(abs(axis_right_near[6] - principal_x), axis_right_near[7], model_F, model_W,
+        #                                    model_a, model_b)
+        #     cv2.line(rgb_rot, (axis_right_near[4], axis_right_near[5]), (axis_right_near[6], axis_right_near[7]),
+        #              (255, 0, 0), 1)
+        #     cv2.putText(rgb_rot, str(round(dis_r_1, 0)), (axis_right_near[4], axis_right_near[5]),
+        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
+        #     cv2.putText(rgb_rot, str(round(dis_r_2, 0)), (axis_right_near[6], axis_right_near[7]),
+        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
+        #     ret_mess += 'R2,' + str(round(dis_r_1, 0)) + ',' + str(round(dis_r_2, 0)) + '\n'
+        #     # # 画延长线
+        #     # line_right_near_1 = CVFunc.func_extension_line(axis_right_near[4], axis_right_near[5], axis_right_near[6],
+        #     #                                                axis_right_near[7], 'r', img_height, img_width)
+        #     # cv2.line(rgb_rot, (line_right_near_1[0], line_right_near_1[1]),
+        #     #          (line_right_near_1[2], line_right_near_1[3]), (255, 0, 0), 1)
+        #     # # 计算直线方程
+        #     # a_right_2 = (axis_right_near[1] - axis_right_near[3]) / (axis_right_near[0] - axis_right_near[2])
+        #     # b_right_2 = axis_right_near[1] - (a_right_2 * axis_right_near[0])
+        #     # # print('右侧角度%0.4f°，公式y=%0.2fx+%0.2f' % (angle_right_near, a_right, b_right))
+        #     # # file_rec.write(str_CID + 'R,%0.4f,y=%0.2fx+%0.2f\n' % (angle_right_near, a_right, b_right))
+        #     # ret_mess += 'R 2 ,y=%0.2fx+%0.2f\n' % (a_right_2, b_right_2)
+        # else:
+        #     err_mess_all += 'Not found right 2\n'
+        #     # print('右侧未找到垂直线')
+        #     # file_rec.write(str_CID + 'Not found right\n')
 
     return rgb_rot, ret_mess, err_mess_all
 
 
 # 开始主程序
+# 读取模型参数
+file_model = open('Model.txt', 'r', encoding='utf-8')
+para_lines = file_model.readlines()
+model_F = float(para_lines[0].strip('\n'))
+model_W = float(para_lines[1].strip('\n'))
+model_a = float(para_lines[2].strip('\n'))
+model_b = float(para_lines[3].strip('\n'))
+principal_x = int(para_lines[4].strip('\n'))
+principal_y = int(para_lines[5].strip('\n'))
+file_model.close()
+
 # 新建文件夹,读取时间作为文件名
 str_fileAddress = '../TestData-1/'
 str_fileHome = str_fileAddress + 'org/'
@@ -165,11 +223,11 @@ for title in title_li:
     frame0 = cv2.imread(str_fileHome + title)
     frame0_distance, ret0_mess, err0_mess = get_distance(frame0)
     if len(ret0_mess) > 0:
-        file_rec.write('Get Data:\n' + ret0_mess)
+        # file_rec.write('Get Data:\n' + ret0_mess)
         print('Get Data:\n' + ret0_mess)
 
     if len(err0_mess) > 0:
-        file_rec.write('Error Message:\n' + err0_mess)
+        # file_rec.write('Error Message:\n' + err0_mess)
         print('Error:\n' + err0_mess)
     cv2.imshow('Dis', frame0_distance)
     cv2.imwrite(str_fileAddress + title, frame0_distance)
