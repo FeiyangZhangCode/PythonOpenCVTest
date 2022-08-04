@@ -164,10 +164,10 @@ def get_parameter(gra_edge):
 # 开始主程序
 # 提取图像
 model_F = 1120
-model_W = 101
+model_W = 1180
 principal_x = 1006
-principal_y = 607
-file_name = 'h0t0'
+principal_y = 605
+file_name = 'Vertical-20cm-90'
 rgb_frame = cv2.imread('./TestData/' + file_name + '.jpg')
 # 获取图像位置参数
 img_test = rgb_frame.copy()
@@ -177,14 +177,15 @@ mid_height = int(img_height / 2)
 mid_width = int(img_width / 2)
 
 # 提取红色线
-gra_red = get_red(img_test)
+# gra_red = get_red(img_test)
 
 # Canny提取边界
-gra_edge = cv2.Canny(gra_red, 70, 140)
+gra_edge = cv2.Canny(rgb_frame, 70, 140)
 
 # 手动去除校准用红色区域
-gra_edge[0:principal_y+100, :] = 0
-# cv2.imshow('gra', gra_edge)
+gra_edge[0:principal_y, :] = 0
+cv2.imshow('gra', gra_edge)
+
 # cv2.imwrite('./TestData/' + file_name + '-gra.jpg', gra_edge)
 # 计算参数，返回水平线高度，垂直线HoughLinesP结果，从右向左的第3和第2条线的a和b值
 hor_lines_points, ver_lines, right_formular, left_formular = get_parameter(gra_edge)

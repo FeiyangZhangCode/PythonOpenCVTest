@@ -54,6 +54,7 @@ def get_red(img_rgb):
 
 # 计算模型参数，返回a、b值
 def get_parameter(img_frame):
+    global model_f, model_w, principal_x, principal_y
     a_calc = 0.0
     b_calc = 0.0
     # 提取红色线
@@ -62,9 +63,13 @@ def get_parameter(img_frame):
     # Canny提取边界
     gra_edge = cv2.Canny(gra_red, 70, 140)
 
+    # 去除上半部区域
+    gra_edge[0:int(img_frame.shape[0] / 2), :] = 0
+
     # 提取各类型线段
     gra_width_HLP = gra_edge.shape[1]
     mid_width_HLP = int(gra_width_HLP / 2)
+    gra_height_HLP = gra_edge.shape[0]
     gra_lines = np.zeros((gra_edge.shape[0], gra_edge.shape[1]), np.uint8)  # 创建个全0的黑背景
     y_area = np.zeros([gra_edge.shape[0], 2], np.uint64)  # 0是权重，1是x1和x2中最接近中轴的那一端
     ver_lines_angle = []
@@ -157,11 +162,6 @@ def get_parameter(img_frame):
     if (temp_height - hor_height[last_id][0]) > 4:
         hor_height.append(temp_point)
 
-    # 画出识别到的水平线
-    for hor_height_point in hor_height:
-        cv2.line(img_frame, (0, hor_height_point[0] + mid_height), (img_width, hor_height_point[0] + mid_height),
-                 (255, 0, 0), 1)
-
     # 计算a和b，画出用于标定的垂直线
     a_calc = 0.0
     b_calc = 0.0
@@ -179,12 +179,66 @@ def get_parameter(img_frame):
                      (0, 255, 255), 1)
             break
 
+    # 画出识别到的水平线
+    for hor_height_point in hor_height:
+        dis_hor = calc_horizontal(hor_height_point[0], model_f, model_w, a_calc, b_calc)
+        dis_hor = round(dis_hor, 2)
+        cv2.line(img_frame, (0, hor_height_point[0]), (gra_width_HLP, hor_height_point[0]), (255, 0, 0), 1)
+        cv2.putText(img_frame, str(dis_hor) + 'mm', (mid_width_HLP, hor_height_point[0]), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (255, 0, 0), 1)
+
+    # 计算垂直线到图像中轴的距离，并画出垂直线
+    for ver_line in ver_lines_org:
+        for x1, y1, x2, y2 in ver_line:
+            dis_ver_1 = calc_vertical(abs(x1 - principal_x), y1, model_f, model_w, a_calc, b_calc)
+            dis_ver_2 = calc_vertical(abs(x2 - principal_x), y2, model_f, model_w, a_calc, b_calc)
+            # dis_ver = (dis_ver_1 + dis_ver_2) / 2
+            # print(x1, y1, dis_ver_1)
+            # print(x2, y2, dis_ver_2)
+            # x_ver = int((x1 + x2) / 2)
+            # y_ver = int((y1 + y2) / 2)
+            cv2.line(img_frame, (x1, y1), (x2, y2), (0, 255, 0), 1)
+            cv2.putText(img_frame, str(round(dis_ver_1, 0)), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                        (0, 255, 0), 1)
+            cv2.putText(img_frame, str(round(dis_ver_2, 0)), (x2, y2), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                        (0, 255, 0), 1)
+
     return a_calc, b_calc, img_frame
 
 
 # 开始主程序
+# 录入焦距和间距
+model_f = 0
+principal_x = 0
+principal_y = 0
+model_w = int(input('间距W'))
+cap_id = int(input('相机编号(0/1)'))
+
+while (cap_id != 0) and (cap_id != 1):
+    cap_id = int(input('相机编号(0/1)'))
+
+if cap_id == 0:
+    model_f = 1120
+    principal_x = 1006
+    principal_y = 605
+else:
+    model_f = 940
+    principal_x = 1092
+    principal_y = 571
+
+# 打开模型参数存储文件
+file_rec = open('Model.txt', 'r', encoding='utf-8')
+para_lines = file_rec.readlines()
+para_camera = [''] * 12
+if len(para_lines) < 12:
+    for i in range(0, len(para_lines), 1):
+        para_camera[i] = para_lines[i].strip('\n')
+else:
+    for i in range(0, 12, 1):
+        para_camera[i] = para_lines[i].strip('\n')
+file_rec.close()
 # 连接摄像头
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(cap_id)
 cap.set(6, 1196444237)
 cap.set(3, 1920)
 cap.set(4, 1080)
@@ -194,15 +248,6 @@ img_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 img_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 mid_height = int(img_height / 2)
 mid_width = int(img_width / 2)
-
-# 打开模型参数存储文件
-file_rec = open('Model.txt', 'w', encoding='utf-8')
-
-# 录入焦距和间距
-model_f = int(input('焦距F'))
-model_w = int(input('间距W'))
-principal_x = int(input('相机x'))
-principal_y = int(input('相机y'))
 
 while True:
     ret, frame = cap.read()
@@ -222,8 +267,18 @@ while True:
 
         cv2.imshow('Lines', frame_lines)
         print(model_f, model_w, model_a, model_b)
-        file_rec.write(str(model_f) + '\n' + str(model_w) + '\n' + str(model_a) + '\n' + str(model_b) + '\n' +
-                       str(principal_x) + '\n' + str(principal_y) + '\n')
+        file_rec = open('Model.txt', 'w', encoding='utf-8')
+        if cap_id == 0:
+            file_rec.write(str(model_f) + '\n' + str(model_w) + '\n' + str(model_a) + '\n' + str(model_b) + '\n' +
+                           str(principal_x) + '\n' + str(principal_y) + '\n')
+            file_rec.write(para_camera[6] + '\n' + para_camera[7] + '\n' + para_camera[8] + '\n' + para_camera[9] + '\n'
+                           + para_camera[10] + '\n' + para_camera[11] + '\n')
+        elif cap_id == 1:
+            file_rec.write(para_camera[0] + '\n' + para_camera[1] + '\n' + para_camera[2] + '\n' + para_camera[3] + '\n'
+                           + para_camera[4] + '\n' + para_camera[5] + '\n')
+            file_rec.write(str(model_f) + '\n' + str(model_w) + '\n' + str(model_a) + '\n' + str(model_b) + '\n' +
+                           str(principal_x) + '\n' + str(principal_y) + '\n')
+        file_rec.close()
     elif cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
@@ -232,6 +287,6 @@ while True:
     cv2.circle(frame, (principal_x, principal_y), 5, (255, 0, 0), 3)
     cv2.imshow('Cap', frame)
 
-file_rec.close()
+
 cap.release()
 cv2.destroyAllWindows()
