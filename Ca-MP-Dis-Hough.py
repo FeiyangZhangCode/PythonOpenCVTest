@@ -366,9 +366,9 @@ def ups_uart_get(q, cap_id, file_address):
             print(str_time, ina_mess)
             file_rec.write(str_time + '   ' + '\n' + ina_mess)
             if (i_last - i_value) > 0.3:
-                os.system('shutdown now')
-                # print('shutdown', i_last)
-                # i_last = i_value
+                # os.system('shutdown now')
+                print('shutdown', i_last)
+                i_last = i_value
             else:
                 i_last = i_value
 
