@@ -16,8 +16,6 @@ def serial_write():
         # print(len(str_c))
 
 
-
-
 def serial_read():
     se1 = serial.Serial('/dev/ttyTHS2', 9600, timeout=1)
     while True:

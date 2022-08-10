@@ -7,11 +7,18 @@ cap.set(6, 1196444237)
 cap.set(3, 1920)
 cap.set(4, 1080)
 cap.set(5, 30)
+cap.set(11, 80)
+cap.set(12, 80)
+# cap.set(5, 30)
+
+
 # 获取图像位置参数
 img_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 img_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 mid_height = int(img_height / 2)
 mid_width = int(img_width / 2)
+
+
 
 while True:
     ret, frame = cap.read()

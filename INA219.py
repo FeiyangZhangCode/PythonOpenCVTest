@@ -206,13 +206,15 @@ def get_ina219_data():
     if (p < 0): p = 0
 
     # INA219 measure bus voltage on the load side. So PSU voltage = bus_voltage + shunt_voltage
-    # print("PSU Voltage:   {:6.3f} V".format(bus_voltage + shunt_voltage))
-    # print("Shunt Voltage: {:9.6f} V".format(shunt_voltage))
+    print("PSU Voltage:   {:6.3f} V".format(bus_voltage + shunt_voltage))
+    print("Shunt Voltage: {:9.6f} V".format(shunt_voltage))
     print("Load Voltage:  {:6.3f} V".format(bus_voltage))
     print("Current:       {:9.6f} A".format(current / 1000))
     print("Power:         {:6.3f} W".format(power))
     print("Percent:       {:3.1f}%".format(p))
     print("")
-    str_mess = "Current:{:9.6f} A".format(current / 1000) + "; Power:{:6.3f} W".format(power) + "; Percent:{:3.1f}%".format(p) + '\n'
+    str_mess = "Current:{:9.6f} A".format(current / 1000) + "; Power:{:6.3f} W".format(power) + \
+               "; Percent:{:3.1f}%".format(p) + "PSU Voltage:{:6.3f} V".format(bus_voltage + shunt_voltage) + \
+               "Shunt Voltage:{:9.6f} V".format(shunt_voltage) + "Load Voltage:{:6.3f} V".format(bus_voltage) + '\n'
     i_value = current / 1000
     return str_mess, i_value

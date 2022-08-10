@@ -22,21 +22,21 @@ def getDist_P2P(x1_d, y1_d, x2_d, y2_d):
     return distance
 
 
-# 识别水平和垂直线（2022-08-04）
+# 识别水平和垂直线（2022-08-08）
 def get_HoughLinesP(gra_edge):
     # 提取各类型线段
     gra_width_HLP = gra_edge.shape[1]
     mid_width_HLP = int(gra_width_HLP / 2)
     gra_lines = np.zeros((gra_edge.shape[0], gra_edge.shape[1]), np.uint8)  # 创建个全0的黑背景
     y_area = np.zeros([gra_edge.shape[0], 2], np.uint64)  # 0是权重，1是x1和x2中最接近中轴的那一端
-    ver_lines_angle = []
     ver_lines_org = []
     num_hor = 0
     lines = cv2.HoughLinesP(gra_edge, rho=1.0, theta=np.pi / 180, threshold=50, minLineLength=50, maxLineGap=5)
     for line in lines:
         for x1_p, y1_p, x2_p, y2_p in line:
+            # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
             if getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 50.0:
-                # cv2.line(gra_lines, (x1, y1), (x2, y2), 255, 1)
+                # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
                 if abs(y1_p - y2_p) < 2 and x2_p > int(gra_width_HLP / 4) and x1_p < int(gra_width_HLP * 3 / 4):
                     cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
                     y_avg = int((y1_p + y2_p) / 2)
@@ -58,59 +58,13 @@ def get_HoughLinesP(gra_edge):
                         result = np.arctan(k) * 57.29577
                     else:
                         result = 90
-                    if abs(result) > 10 and ((x2_p < (mid_width_HLP - 300)) or (x2_p > (mid_width_HLP + 300))):
-                        cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
+                    # if abs(result) > 2 and ((x2_p < (mid_width_HLP - 300)) or (x2_p > (mid_width_HLP + 300))):
+                    if (85 >= abs(result) > 2) or (
+                            abs(result) > 85 and abs(x1_p - mid_width_HLP) < 300):  # 提取斜线和中间600像素的垂直线
+                        # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
                         # num_lines += 1
-                        w1_f = float(x1_p)
-                        w2_f = float(x2_p)
-                        h1_f = float(y1_p)
-                        h2_f = float(y2_p)
-                        a_f = (w1_f - w2_f) / (h1_f - h2_f)
-                        b_f = w1_f - (a_f * h1_f)
-                        weight_f = getDist_P2P(x1_p, y1_p, x2_p, y2_p)
-
-                        ver_lines_angle.append([a_f, b_f, weight_f])
                         ver_lines_org.append(line)
                         continue
-    # 垂直线数组
-    ver_lines_angle.sort(key=lambda x: x[0], reverse=True)
-    ver_formulas_new = []
-    a_sum = 0.0
-    b_sum = 0.0
-    weight_sum = 0.0
-    for ver_line_angle in ver_lines_angle:
-        if a_sum == 0.0:
-            a_sum = ver_line_angle[0] * ver_line_angle[2]
-            b_sum = ver_line_angle[1] * ver_line_angle[2]
-            weight_sum = ver_line_angle[2]
-        else:
-            if abs((a_sum / weight_sum) - ver_line_angle[0]) < 0.1:
-                a_sum += ver_line_angle[0] * ver_line_angle[2]
-                b_sum += ver_line_angle[1] * ver_line_angle[2]
-                weight_sum += ver_line_angle[2]
-            else:
-                temp_a_avg = round((a_sum / weight_sum), 4)
-                temp_b_avg = round((b_sum / weight_sum), 4)
-                ver_formulas_new.append([temp_a_avg, temp_b_avg])
-                a_sum = ver_line_angle[0] * ver_line_angle[2]
-                b_sum = ver_line_angle[1] * ver_line_angle[2]
-                weight_sum = ver_line_angle[2]
-    if a_sum != 0.0:
-        temp_a_avg = round((a_sum / weight_sum), 4)
-        temp_b_avg = round((b_sum / weight_sum), 4)
-        ver_formulas_new.append([temp_a_avg, temp_b_avg])
-
-    formular_l = [0.0, 0.0]
-    formular_r = [0.0, 0.0]
-    for i in range(0, len(ver_formulas_new) - 1, 1):
-        a_r = ver_formulas_new[i][0]
-        a_l = ver_formulas_new[i + 1][0]
-        b_r = ver_formulas_new[i][1]
-        b_l = ver_formulas_new[i + 1][1]
-        if a_r > 0.0 and a_l < 0.0:
-            formular_l = [a_l, b_l]
-            formular_r = [a_r, b_r]
-            break
 
     # 水平线数组
     hor_height = []
@@ -141,7 +95,7 @@ def get_HoughLinesP(gra_edge):
         if (temp_height - hor_height[last_id][0]) > 4:
             hor_height.append(temp_point)
 
-    return hor_height, ver_lines_org, formular_r, formular_l
+    return hor_height, ver_lines_org
 
 
 # 边缘检测算法（2022-06-30）
@@ -155,7 +109,8 @@ def find_edge(img_org):
     # ret, gra_can_mix = cv2.threshold(gra_can_mix, 0, 255, cv2.THRESH_BINARY)
     return gra_can_mix
 
-# 边缘检测算法-轻量（2022-08-3）
+
+# 边缘检测算法-轻量（2022-08-03）
 def find_edge_light(img_org):
     gra_can_mix = np.zeros((img_org.shape[0], img_org.shape[1]), np.uint8)  # 创建个全0的黑背景
     for i in range(20, 100, 50):
@@ -199,6 +154,20 @@ def func_extension_line(x1, y1, x2, y2, side, img_height, img_width):
         else:
             line_axis[2] = int(- b / a)
             line_axis[3] = 0
+
+    return line_axis
+
+
+# 计算下半部分的延长线
+def extension_line_half(x1, y1, x2, y2, img_height, principal_y):
+    a = (y1 - y2) / (x1 - x2)
+    b = y1 - (a * x1)
+    line_axis = [int] * 4
+    # 半图线
+    line_axis[0] = int((principal_y - b) / a)
+    line_axis[1] = principal_y
+    line_axis[2] = int((img_height - b) / a)
+    line_axis[3] = img_height
 
     return line_axis
 
@@ -462,7 +431,6 @@ def nearest_vertical_2(gra_edge_rot):
     # gra_test = cv2.subtract(gra_test, gra_temp)
 
     # 去除噪点
-
 
     # 根据连通区域去噪点
     # gra_test = CVFunc.func_noise_1(gra_test, 20)
