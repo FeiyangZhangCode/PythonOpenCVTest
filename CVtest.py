@@ -70,8 +70,7 @@ def get_HoughLinesP(gra_edge):
                     else:
                         result = 90
                     # if abs(result) > 2 and ((x2_p < (mid_width_HLP - 300)) or (x2_p > (mid_width_HLP + 300))):
-                    if (85 >= abs(result) > 2) or (
-                            abs(result) > 85 and abs(x1_p - mid_width_HLP) < 300):  # 提取斜线和中间600像素的垂直线
+                    if 88 >= abs(result) > 2:  # 提取斜线和中间600像素的垂直线
                         # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
                         # num_lines += 1
                         ver_lines_org.append(line)
@@ -236,47 +235,36 @@ def dis_calc(rgb_frame, c_id):
             #         cv2.putText(rgb_rot, 'out', (x2, y2), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
             #                     (0, 255, 0), 1)
     # 画出左端最近垂直线
-    x1 = axis_temp_l[0]
-    y1 = axis_temp_l[1]
-    x2 = axis_temp_l[2]
-    y2 = axis_temp_l[3]
-    # cv2.line(rgb_rot, (x1, y1), (x2, y2), (0, 255, 0), 1)
-    axis_ex = CVFunc.extension_line_half(x1, y1, x2, y2, img_height, principal_y)
-    cv2.line(rgb_rot, (axis_ex[0], axis_ex[1]), (axis_ex[2], axis_ex[3]), (255, 0, 255), 1)
-    dis_ver_1 = CVFunc.calc_vertical(abs(x1 - principal_x), y1, model_F, model_W, model_a, model_b)
-    dis_ver_2 = CVFunc.calc_vertical(abs(x2 - principal_x), y2, model_F, model_W, model_a, model_b)
-    cv2.putText(rgb_rot, str(round(dis_ver_1, 0)), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                (0, 255, 0), 1)
-    cv2.putText(rgb_rot, str(round(dis_ver_2, 0)), (x2, y2), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                (0, 255, 0), 1)
-    # dis_ver_min = min(dis_ver_1, dis_ver_2)
-    # y1_ex = img_height - 100
-    # y2_ex = img_height
-    # x1_ex = principal_x - (dis_ver_min * (model_a * y1_ex + model_b) / model_W)
-    # x2_ex = principal_x - (dis_ver_min * (model_a * y2_ex + model_b) / model_W)
-    # axis_ex = CVFunc.extension_line_half(x1_ex, y1_ex, x2_ex, y2_ex, img_height, principal_y)
-    # cv2.line(rgb_rot, (axis_ex[0], axis_ex[1]), (axis_ex[2], axis_ex[3]), (0, 255, 255), 1)
+    if axis_temp_l[0] != 0 and axis_temp_l[2] != 0:
+        x1 = axis_temp_l[0]
+        y1 = axis_temp_l[1]
+        x2 = axis_temp_l[2]
+        y2 = axis_temp_l[3]
+        # cv2.line(rgb_rot, (x1, y1), (x2, y2), (0, 255, 0), 1)
+        axis_ex = CVFunc.extension_line_half(x1, y1, x2, y2, img_height, principal_y)
+        cv2.line(rgb_rot, (axis_ex[0], axis_ex[1]), (axis_ex[2], axis_ex[3]), (0, 255, 0), 1)
+        dis_ver_1 = CVFunc.calc_vertical(abs(x1 - principal_x), y1, model_F, model_W, model_a, model_b)
+        dis_ver_2 = CVFunc.calc_vertical(abs(x2 - principal_x), y2, model_F, model_W, model_a, model_b)
+        cv2.putText(rgb_rot, str(round(dis_ver_1, 0)), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (0, 255, 0), 1)
+        cv2.putText(rgb_rot, str(round(dis_ver_2, 0)), (x2, y2), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (0, 255, 0), 1)
+
     # 画出右端最近垂直线
-    x1 = axis_temp_r[0]
-    y1 = axis_temp_r[1]
-    x2 = axis_temp_r[2]
-    y2 = axis_temp_r[3]
-    # cv2.line(rgb_rot, (x1, y1), (x2, y2), (0, 255, 0), 1)
-    axis_ex = CVFunc.extension_line_half(x1, y1, x2, y2, img_height, principal_y)
-    cv2.line(rgb_rot, (axis_ex[0], axis_ex[1]), (axis_ex[2], axis_ex[3]), (255, 0, 255), 1)
-    dis_ver_1 = CVFunc.calc_vertical(abs(x1 - principal_x), y1, model_F, model_W, model_a, model_b)
-    dis_ver_2 = CVFunc.calc_vertical(abs(x2 - principal_x), y2, model_F, model_W, model_a, model_b)
-    cv2.putText(rgb_rot, str(round(dis_ver_1, 0)), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                (0, 255, 0), 1)
-    cv2.putText(rgb_rot, str(round(dis_ver_2, 0)), (x2, y2), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                (0, 255, 0), 1)
-    # dis_ver_min = min(dis_ver_1, dis_ver_2)
-    # y1_ex = img_height - 100
-    # y2_ex = img_height
-    # x1_ex = principal_x + (dis_ver_min * (model_a * y1_ex + model_b) / model_W)
-    # x2_ex = principal_x + (dis_ver_min * (model_a * y2_ex + model_b) / model_W)
-    # axis_ex = CVFunc.extension_line_half(x1_ex, y1_ex, x2_ex, y2_ex, img_height, principal_y)
-    # cv2.line(rgb_rot, (axis_ex[0], axis_ex[1]), (axis_ex[2], axis_ex[3]), (0, 255, 255), 1)
+    if axis_temp_r[0] != 0 and axis_temp_r[2] != 0:
+        x1 = axis_temp_r[0]
+        y1 = axis_temp_r[1]
+        x2 = axis_temp_r[2]
+        y2 = axis_temp_r[3]
+        # cv2.line(rgb_rot, (x1, y1), (x2, y2), (0, 255, 0), 1)
+        axis_ex = CVFunc.extension_line_half(x1, y1, x2, y2, img_height, principal_y)
+        cv2.line(rgb_rot, (axis_ex[0], axis_ex[1]), (axis_ex[2], axis_ex[3]), (0, 255, 0), 1)
+        dis_ver_1 = CVFunc.calc_vertical(abs(x1 - principal_x), y1, model_F, model_W, model_a, model_b)
+        dis_ver_2 = CVFunc.calc_vertical(abs(x2 - principal_x), y2, model_F, model_W, model_a, model_b)
+        cv2.putText(rgb_rot, str(round(dis_ver_1, 0)), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (0, 255, 0), 1)
+        cv2.putText(rgb_rot, str(round(dis_ver_2, 0)), (x2, y2), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (0, 255, 0), 1)
 
     ret_value[1] = int(dis_temp_l)
     ret_value[2] = int(dis_temp_r)
@@ -291,62 +279,62 @@ def dis_calc(rgb_frame, c_id):
 
 
 # 开始主程序
-frame0 = cv2.imread('./TestData/C0-112247-785530.jpg')
-frame0_distance, ret0_mess, err0_mess, time0_mess, ret0_value = dis_calc(frame0, 0)
-cv2.imshow('Dis', frame0_distance)
-print(ret0_value)
-print(time0_mess)
-cv2.waitKey(0)
+# frame0 = cv2.imread('./TestData/C0-112247-785530.jpg')
+# frame0_distance, ret0_mess, err0_mess, time0_mess, ret0_value = dis_calc(frame0, 0)
+# cv2.imshow('Dis', frame0_distance)
+# print(ret0_value)
+# print(time0_mess)
+# cv2.waitKey(0)
 
 
-# # 选择摄像头
-# cap_id = int(input('相机编号(0/1)'))
-# while (cap_id != 0) and (cap_id != 1):
-#     cap_id = int(input('相机编号(0/1)'))
-#
-# # 新建文件夹,读取时间作为文件名
-# str_fileAddress = '../TestData-1/'
-# str_fileHome = str_fileAddress + 'org/'
-# str_Time = datetime.datetime.now().strftime('%Y%m%d-%H%M')
-# file_rec = open(str_fileAddress + str_Time + '.txt', 'w', encoding='utf-8')
-# str_fileAddress = str_fileAddress + str_Time
-# if not os.path.exists(str_fileAddress):
-#     os.makedirs(str_fileAddress)
-# str_fileAddress += '/'
-#
-# # 按照最近修改时间升序排序
-# title_li = os.listdir(str_fileHome)
-# title_li = sorted(title_li, key=lambda x: os.path.getmtime(os.path.join(str_fileHome, x)), reverse=False)
-# loop_num = 0
-# for title in title_li:
-#     # print(title)
-#     loop_num = loop_num + 1
-#     str_Time = datetime.datetime.now().strftime('%H%M%S')
-#     file_rec.write(str_Time + ',' + str(loop_num) + ',' + title + '\n')
-#     print(str_Time + ',' + str(loop_num) + ',' + title)
-#     frame0 = cv2.imread(str_fileHome + title)
-#     frame0_distance, ret0_mess, err0_mess, time0_mess, ret0_value = dis_calc(frame0, cap_id)
-#     # 屏幕输出
-#     # print('C' + str(cap_id) + '  ' + str_Time + '  ' + str(loop_num))
-#     # front_value = 'F' + str(ret0_value[0])
-#     # print(front_value)
-#     # left_value = 'L' + str(ret0_value[1])
-#     # print(left_value)
-#     # right_value = 'R' + str(ret0_value[2])
-#     # print(right_value)
-#
-#     # if len(ret0_mess) > 0:
-#     #     # file_rec.write('Get Data:\n' + ret0_mess)
-#     #     print('Data:\n' + ret0_mess)
-#     # if len(err0_mess) > 0:
-#     #     # file_rec.write('Error Message:\n' + err0_mess)
-#     #     print('Error:\n' + err0_mess)
-#     if len(time0_mess) > 0:
-#         print('Timer:\n' + time0_mess)
-#     cv2.imshow('Dis', frame0_distance)
-#     cv2.imwrite(str_fileAddress + title, frame0_distance)
-#
-#     if cv2.waitKey(1) & 0xFF == ord('q'):
-#         break
+# 选择摄像头
+cap_id = int(input('相机编号(0/1)'))
+while (cap_id != 0) and (cap_id != 1):
+    cap_id = int(input('相机编号(0/1)'))
+
+# 新建文件夹,读取时间作为文件名
+str_fileAddress = '../TestData-1/'
+str_fileHome = str_fileAddress + 'org/'
+str_Time = datetime.datetime.now().strftime('%Y%m%d-%H%M')
+file_rec = open(str_fileAddress + str_Time + '.txt', 'w', encoding='utf-8')
+str_fileAddress = str_fileAddress + str_Time
+if not os.path.exists(str_fileAddress):
+    os.makedirs(str_fileAddress)
+str_fileAddress += '/'
+
+# 按照最近修改时间升序排序
+title_li = os.listdir(str_fileHome)
+title_li = sorted(title_li, key=lambda x: os.path.getmtime(os.path.join(str_fileHome, x)), reverse=False)
+loop_num = 0
+for title in title_li:
+    # print(title)
+    loop_num = loop_num + 1
+    str_Time = datetime.datetime.now().strftime('%H%M%S')
+    file_rec.write(str_Time + ',' + str(loop_num) + ',' + title + '\n')
+    print(str_Time + ',' + str(loop_num) + ',' + title)
+    frame0 = cv2.imread(str_fileHome + title)
+    frame0_distance, ret0_mess, err0_mess, time0_mess, ret0_value = dis_calc(frame0, cap_id)
+    # 屏幕输出
+    # print('C' + str(cap_id) + '  ' + str_Time + '  ' + str(loop_num))
+    # front_value = 'F' + str(ret0_value[0])
+    # print(front_value)
+    # left_value = 'L' + str(ret0_value[1])
+    # print(left_value)
+    # right_value = 'R' + str(ret0_value[2])
+    # print(right_value)
+
+    # if len(ret0_mess) > 0:
+    #     # file_rec.write('Get Data:\n' + ret0_mess)
+    #     print('Data:\n' + ret0_mess)
+    # if len(err0_mess) > 0:
+    #     # file_rec.write('Error Message:\n' + err0_mess)
+    #     print('Error:\n' + err0_mess)
+    if len(time0_mess) > 0:
+        print('Timer:\n' + time0_mess)
+    cv2.imshow('Dis', frame0_distance)
+    cv2.imwrite(str_fileAddress + title, frame0_distance)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
 
 cv2.destroyAllWindows()

@@ -25,47 +25,49 @@ def getDist_P2P(x1_d, y1_d, x2_d, y2_d):
 # 识别水平和垂直线（2022-08-08）
 def get_HoughLinesP(gra_edge):
     # 提取各类型线段
+    err_mess = ''
     gra_width_HLP = gra_edge.shape[1]
     mid_width_HLP = int(gra_width_HLP / 2)
     gra_lines = np.zeros((gra_edge.shape[0], gra_edge.shape[1]), np.uint8)  # 创建个全0的黑背景
     y_area = np.zeros([gra_edge.shape[0], 2], np.uint64)  # 0是权重，1是x1和x2中最接近中轴的那一端
     ver_lines_org = []
     num_hor = 0
-    lines = cv2.HoughLinesP(gra_edge, rho=1.0, theta=np.pi / 180, threshold=50, minLineLength=50, maxLineGap=5)
-    for line in lines:
-        for x1_p, y1_p, x2_p, y2_p in line:
-            # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
-            if getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 50.0:
+    try:
+        lines = cv2.HoughLinesP(gra_edge, rho=1.0, theta=np.pi / 180, threshold=50, minLineLength=50, maxLineGap=5)
+        for line in lines:
+            for x1_p, y1_p, x2_p, y2_p in line:
                 # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
-                if abs(y1_p - y2_p) < 2 and x2_p > int(gra_width_HLP / 4) and x1_p < int(gra_width_HLP * 3 / 4):
-                    cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
-                    y_avg = int((y1_p + y2_p) / 2)
-                    y_area[y_avg, 0] += abs(x1_p - x2_p)
-                    if abs(x1_p - (gra_width_HLP / 2)) > abs(x2_p - (gra_width_HLP / 2)):
-                        y_area[y_avg, 1] = x2_p
-                    else:
-                        y_area[y_avg, 1] = x1_p
-                    num_hor += 1
-                    # print(y1, y2)
-                    continue
-                elif abs(y1_p - y2_p) > 5:
-                    x1_f = float(x1_p)
-                    x2_f = float(x2_p)
-                    y1_f = float(y1_p)
-                    y2_f = float(y2_p)
-                    if x2_f - x1_f != 0:
-                        k = -(y2_f - y1_f) / (x2_f - x1_f)
-                        result = np.arctan(k) * 57.29577
-                    else:
-                        result = 90
-                    # if abs(result) > 2 and ((x2_p < (mid_width_HLP - 300)) or (x2_p > (mid_width_HLP + 300))):
-                    if (85 >= abs(result) > 2) or (
-                            abs(result) > 85 and abs(x1_p - mid_width_HLP) < 300):  # 提取斜线和中间600像素的垂直线
-                        # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
-                        # num_lines += 1
-                        ver_lines_org.append(line)
-                        continue
+                if getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 50.0:
+                    # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
+                    if abs(y1_p - y2_p) < 2 and x2_p > int(gra_width_HLP / 4) and x1_p < int(gra_width_HLP * 3 / 4):
+                        cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
+                        y_avg = int((y1_p + y2_p) / 2)
+                        y_area[y_avg, 0] += abs(x1_p - x2_p)
+                        if abs(x1_p - (gra_width_HLP / 2)) > abs(x2_p - (gra_width_HLP / 2)):
+                            y_area[y_avg, 1] = x2_p
+                        else:
+                            y_area[y_avg, 1] = x1_p
+                        num_hor += 1
+                        # print(y1, y2)
+                    elif abs(y1_p - y2_p) > 5:
+                        x1_f = float(x1_p)
+                        x2_f = float(x2_p)
+                        y1_f = float(y1_p)
+                        y2_f = float(y2_p)
+                        if x2_f - x1_f != 0:
+                            k = -(y2_f - y1_f) / (x2_f - x1_f)
+                            result = np.arctan(k) * 57.29577
+                        else:
+                            result = 90
+                        # if abs(result) > 2 and ((x2_p < (mid_width_HLP - 300)) or (x2_p > (mid_width_HLP + 300))):
+                        if (85 >= abs(result) > 2) or (
+                                (90 > abs(result) > 85) and abs(x1_p - mid_width_HLP) < 100):  # 提取斜线和中间200像素的垂直线
+                            # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
+                            # num_lines += 1
+                            ver_lines_org.append(line)
 
+    except Exception as e:
+        err_mess += 'Hough lines\n' + str(e) + '\n'
     # 水平线数组
     hor_height = []
     temp_height = 0
@@ -95,7 +97,7 @@ def get_HoughLinesP(gra_edge):
         if (temp_height - hor_height[last_id][0]) > 4:
             hor_height.append(temp_point)
 
-    return hor_height, ver_lines_org
+    return hor_height, ver_lines_org, err_mess
 
 
 # 边缘检测算法（2022-06-30）
