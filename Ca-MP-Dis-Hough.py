@@ -10,7 +10,7 @@ import sys
 import signal
 import serial
 
-se = serial.Serial('/dev/ttyTHS1', 9600, timeout=1)
+se = serial.Serial('/dev/ttyTHS1', 9600, timeout=0.2)
 
 # 读取模型参数
 file_model = open('Model.txt', 'r', encoding='utf-8')
@@ -216,9 +216,9 @@ def image_put(q, c_id, file_address):
 
 
 # 获得视频流帧数图片，调用测距
-def distance_get(q, lock_ser, cap_id, file_address):
+def distance_get(q, q_s, lock_ser, cap_id, file_address):
     loop_num = 0
-    file_rec = open(file_address + str(cap_id) + '.txt', 'a')
+
     while True:
         rgb_frame = q.get()
         loop_num += 1
@@ -227,20 +227,10 @@ def distance_get(q, lock_ser, cap_id, file_address):
         frame_distance, ret_mess, err_mess, time_mess, ret_value = dis_calc(rgb_frame, cap_id)
         # 显示及保存图片
         # cv2.imshow('Cap', frame_distance)
-        # cv2.imwrite(file_address + 'C' + str(cap_id) + '-' + str_Time + '.jpg', rgb_frame)
-        # cv2.imwrite(file_address + 'D' + str(cap_id) + '-' + str_Time + '.jpg', frame_distance)
-        # 屏幕输出
-        se_send = 'C' + str(cap_id)
-        if str(cap_id) == '0':
-            se_send += 'F' + str(ret_value[0]) + 'L' + str(ret_value[1]) + 'R' + str(ret_value[2])
-        else:
-            se_send += 'F' + str(ret_value[0]) + 'L' + str(ret_value[2]) + 'R' + str(ret_value[1])
-        print(str_Time + '  ' + str(loop_num))
-        print(se_send)
-        # 串口输出（自锁开始）
-        lock_ser.acquire()
-        se.write(se_send.encode())
-        # 保存txt（自锁结束）
+        cv2.imwrite(file_address + 'C' + str(cap_id) + '-' + str_Time + '.jpg', rgb_frame)
+        cv2.imwrite(file_address + 'D' + str(cap_id) + '-' + str_Time + '.jpg', frame_distance)
+        # 保存txt
+        file_rec = open(file_address + str(cap_id) + '.txt', 'a')
         file_rec.write(str_Time + '  ' + str(loop_num) + '\n')
         if len(ret_mess) > 0:
             file_rec.write('Data:\n' + ret_mess)
@@ -248,11 +238,15 @@ def distance_get(q, lock_ser, cap_id, file_address):
             file_rec.write('Error:\n' + err_mess)
         if len(time_mess) > 0:
             file_rec.write('Timer:\n' + time_mess)
-        lock_ser.release()
+        file_rec.close()
+        q_s.put(ret_value)
+        if q_s.qsize() > 1:
+            q_s.get()
 
 
-# 读取UPS
-def ups_get(lock_ser, file_address):
+# 读取UPS和Uart
+def uart_ups_get(q0, q1, lock_ser, file_address):
+    global se
     loop_num = 0
     i_last = 0.0
     file_rec = open(file_address + 'UPS.txt', 'a')
@@ -261,39 +255,92 @@ def ups_get(lock_ser, file_address):
     i_last = i_value
     file_rec.write(str_time + '   ' + str(loop_num) + '\n' + ina_mess)
     file_rec.close()
-
+    front_value = 0
+    rear_value = 0
+    left_value = 0
+    right_value = 0
     while True:
-        time.sleep(10)
         loop_num += 1
-        file_rec = open(file_address + 'UPS.txt', 'a')
-        str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-        ina_mess, i_value = INA219.get_ina219_data()
-        file_rec.write(str_time + '   ' + '\n' + ina_mess)
-        file_rec.close()
-        if (i_last - i_value) > 1.0:
-            # os.system('shutdown now')
-            print('shutdown', i_last)
-            i_last = i_value
+        start_time = time.time()
+        # 读取两个摄像头测距进程的数据
+        get_0 = False
+        get_1 = False
+        se_send = ''
+        if not q0.empty() and not q1.empty():
+            get_0 = True
+            get_1 = True
+            t0_list = q0.get()
+            t1_list = q1.get()
+            front_value = t0_list[0]
+            rear_value = t1_list[0]
+            left_value = min(t0_list[1], t1_list[2])
+            right_value = min(t0_list[2], t1_list[1])
+            se_send = '01 ' + 'F' + str(front_value) + 'R' + str(rear_value) + 'L' + str(left_value) + 'R' + str(right_value)
+        elif not q0.empty() and q1.empty():
+            get_0 = True
+            get_1 = False
+            temp_list = q0.get()
+            front_value = temp_list[0]
+            left_value = temp_list[1]
+            right_value = temp_list[2]
+            se_send = '0- ' + 'F' + str(front_value) + 'R' + str(rear_value) + 'L' + str(left_value) + 'R' + str(right_value)
+        elif q0.empty() and not q1.empty():
+            get_0 = False
+            get_1 = True
+            temp_list = q1.get()
+            rear_value = temp_list[0]
+            left_value = temp_list[2]
+            right_value = temp_list[1]
+            se_send = '-1 ' + 'F' + str(front_value) + 'R' + str(rear_value) + 'L' + str(left_value) + 'R' + str(right_value)
         else:
-            i_last = i_value
+            get_0 = False
+            get_1 = False
+            se_send = ''
+        # 如果有C0或C1的数据，锁定后串口传输
+        if get_0 or get_1:
+            lock_ser.acquire()
+            try:
+                se.write(se_send.encode())
+            except Exception as e:
+                print(e)
+            finally:
+                str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+                print(str_time)
+                print(se_send)
+            lock_ser.release()
 
-
-# 读取Uart
-def uart_get(lock_ser, file_address):
-    global se
-
-    while True:
-        time.sleep(1)
+        # 锁定后读取串口数据
         lock_ser.acquire()
-        line = se.readline()
-        if line:
-            se.write('Get'.encode())
-            print(line)
-            file_serial = open(file_address + 'Serial.txt', 'a')
-            str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-            file_serial.write(str_time + str(line) + '\n')
-            file_serial.close()
+        try:
+            line = se.readline()
+            if line:
+                file_serial = open(file_address + 'Serial.txt', 'a')
+                str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+                file_serial.write(str_time + str(line) + '\n')
+                print(str_time)
+                print(line)
+                file_serial.close()
+        except Exception as e:
+            print(e)
         lock_ser.release()
+        # 读取UPS
+        if loop_num % 20 == 0:
+            file_rec = open(file_address + 'UPS.txt', 'a')
+            str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+            ina_mess, i_value = INA219.get_ina219_data()
+            file_rec.write(str_time + '   ' + '\n' + ina_mess)
+            file_rec.close()
+            print('I=' + str(round(i_value, 4)) + 'A')
+            if (i_last - i_value) > 1.0:
+                # os.system('shutdown now')
+                print('shutdown', i_last)
+                i_last = i_value
+            else:
+                i_last = i_value
+        end_time = time.time()
+        # print('timer', str(loop_num), str(round((end_time - start_time) * 1000, 4)))
+
+
 
 
 def quit_all():
@@ -307,15 +354,6 @@ def quit_all():
 
 # 解决进程问题
 def run_multi_camera():
-    # 摄像头编号
-    cap_list, cap_num = get_camera_id()
-    if cap_num == 1:
-        camera_id_l = [0, ]
-    elif cap_num == 2:
-        camera_id_l = [0, 1, ]
-    else:
-        quit()
-
     # 新建文件夹,读取时间作为文件名
     str_fileAddress = './TestData/'
     str_Time = datetime.datetime.now().strftime('%Y%m%d-%H%M')
@@ -325,16 +363,29 @@ def run_multi_camera():
         os.makedirs(str_fileAddress)
     str_fileAddress += '/'
 
-    mp.set_start_method(method='spawn')  # init
-    queues = [mp.Queue(maxsize=2) for _ in camera_id_l]
-    lock = mp.Lock()
+    # 摄像头编号
+    cap_list, cap_num = get_camera_id()
 
+    mp.set_start_method(method='spawn')  # init
     processes = []
-    for queue, camera_id in zip(queues, camera_id_l):   # 每个摄像头有读取摄像头和识别测距两个进程
-        processes.append(mp.Process(target=image_put, args=(queue, camera_id, str_fileAddress)))
-        processes.append(mp.Process(target=distance_get, args=(queue, lock, camera_id, str_fileAddress)))
-    processes.append(mp.Process(target=ups_get, args=(lock, str_fileAddress)))
-    processes.append(mp.Process(target=uart_get, args=(lock, str_fileAddress)))
+    lock = mp.Lock()
+    queue_c0 = mp.Queue(maxsize=2)
+    queue_c1 = mp.Queue(maxsize=2)
+    queue_s0 = mp.Queue(maxsize=2)
+    queue_s1 = mp.Queue(maxsize=2)
+    if cap_num == 1:
+        processes.append(mp.Process(target=image_put, args=(queue_c0, 0, str_fileAddress)))
+        processes.append(mp.Process(target=distance_get, args=(queue_c0, queue_s0, lock, 0, str_fileAddress)))
+    elif cap_num > 1:
+        processes.append(mp.Process(target=image_put, args=(queue_c0, 0, str_fileAddress)))
+        processes.append(mp.Process(target=distance_get, args=(queue_c0, queue_s0, lock, 0, str_fileAddress)))
+        processes.append(mp.Process(target=image_put, args=(queue_c1, 1, str_fileAddress)))
+        processes.append(mp.Process(target=distance_get, args=(queue_c1, queue_s1, lock, 1, str_fileAddress)))
+    else:
+        quit()
+
+    processes.append(mp.Process(target=uart_ups_get, args=(queue_s0, queue_s1, lock, str_fileAddress)))
+
     for process in processes:
         process.daemon = True
         process.start()
