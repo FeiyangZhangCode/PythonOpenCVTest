@@ -19,240 +19,6 @@ para_lines = file_model.readlines()
 file_model.close()
 
 
-# 图像测距
-def dis_calc(rgb_frame, c_id):
-    global para_lines
-    if int(c_id) == 0:
-        model_F = float(para_lines[0].strip('\n'))
-        model_W = float(para_lines[1].strip('\n'))
-        model_a = float(para_lines[2].strip('\n'))
-        model_b = float(para_lines[3].strip('\n'))
-        principal_x = int(para_lines[4].strip('\n'))
-        principal_y = int(para_lines[5].strip('\n'))
-    else:
-        model_F = float(para_lines[6].strip('\n'))
-        model_W = float(para_lines[7].strip('\n'))
-        model_a = float(para_lines[8].strip('\n'))
-        model_b = float(para_lines[9].strip('\n'))
-        principal_x = int(para_lines[10].strip('\n'))
-        principal_y = int(para_lines[11].strip('\n'))
-
-    ret_mess = ''  # 数据信息
-    err_mess = ''  # 报错信息
-    time_mess = ''  # 时间信息
-    ret_value = [0.0] * 3  # 0是水平线，1是左垂线，2是右垂线
-
-    # 获取图像位置参数
-    img_height = int(rgb_frame.shape[0])
-    img_width = int(rgb_frame.shape[1])
-    mid_height = int(img_height / 2)
-    mid_width = int(img_width / 2)
-
-    # Canny提取边界，保留下半部分
-    start_time = time.time()
-    gra_edge = CVFunc.find_edge_light(rgb_frame)
-    rgb_rot = rgb_frame.copy()
-    gra_edge_rot = gra_edge.copy()
-    gra_edge_rot[0:principal_y, :] = 0
-    end_time = time.time()
-    time_mess += 'Can:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
-
-    # 获取水平和垂直线
-    start_time = time.time()
-    hor_lines_points, left_lines, right_lines, err_mess_hough = CVFunc.get_HoughLinesFLR(gra_edge_rot, principal_x,
-                                                                                         principal_y)
-    err_mess += err_mess_hough
-    end_time = time.time()
-    time_mess += 'Hou:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
-
-    # 画相机中心十字
-    cv2.line(rgb_rot, (principal_x, 0), (principal_x, img_height), (255, 255, 0), 1)
-    cv2.line(rgb_rot, (0, principal_y), (img_width, principal_y), (255, 255, 0), 1)
-    cv2.circle(rgb_rot, (principal_x, principal_y), 5, (255, 255, 0), 3)
-
-    # 计算水平线到相机的距离，输出最近距离，并画出水平线
-    start_time = time.time()
-    dis_temp = 9999.0
-    height_edge = - model_b / model_a
-    axis_temp_h = 0
-    try:
-        for hor_point in hor_lines_points:
-            if float(hor_point[0]) > height_edge:
-                dis_hor = CVFunc.calc_horizontal(hor_point[0], model_F, model_W, model_a, model_b)
-                dis_hor = round(dis_hor, 2)
-                if dis_hor < dis_temp:
-                    dis_temp = dis_hor
-                    axis_temp_h = hor_point[0]
-        cv2.line(rgb_rot, (0, axis_temp_h), (img_width, axis_temp_h), (255, 0, 0), 1)
-        cv2.putText(rgb_rot, str(dis_temp), (mid_width, axis_temp_h), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                    (255, 0, 0), 1)
-    except Exception as e:
-        err_mess += 'calc horizontal line\n' + str(e) + '\n'
-
-    ret_value[0] = int(dis_temp)
-    ret_mess += 'F,' + str(dis_temp) + '\n'
-    end_time = time.time()
-    time_mess += 'Hor:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
-
-    # 计算垂直线到图像中轴的距离，并画出垂直线
-    start_time = time.time()
-    dis_temp_l = 9999.0
-    dis_temp_r = 9999.0
-    ver_left = [[0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0]]  # 平均a，平均b，平均dis，累加权重，最小dis，最小x1，最小y1，最小x2，最小y2
-    ver_right = [[0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0]]
-
-    for l_line in left_lines:
-        for x1, y1, x2, y2 in l_line:
-            if float(y1) > height_edge and float(y2) > height_edge and min(y1, y2) > (principal_y + 50):  # 剔除过于接近中线的数据
-                dis_ver_1 = CVFunc.calc_vertical(abs(x1 - principal_x), y1, model_F, model_W, model_a, model_b)
-                dis_ver_2 = CVFunc.calc_vertical(abs(x2 - principal_x), y2, model_F, model_W, model_a, model_b)
-                x1_f = float(x1)
-                x2_f = float(x2)
-                y1_f = float(y1)
-                y2_f = float(y2)
-                func_a = (y1_f - y2_f) / (x1_f - x2_f)
-                func_b = y1_f - func_a * x1_f
-                weight_ver = CVFunc.getDist_P2P(x1, y1, x2, y2)
-                avg_dis = (dis_ver_1 + dis_ver_2) / 2
-                temp_x = int((principal_y - func_b) / func_a)
-                if temp_x < (principal_x + 50):
-                    if ver_left[0][0] == 0.0:
-                        ver_left[0][0] = func_a
-                        ver_left[0][1] = func_b
-                        ver_left[0][2] = avg_dis
-                        ver_left[0][3] = weight_ver
-                        ver_left[0][4] = min(dis_ver_1, dis_ver_2)
-                        ver_left[0][5] = x1
-                        ver_left[0][6] = y1
-                        ver_left[0][7] = x2
-                        ver_left[0][8] = y2
-                    else:
-                        bool_newline = True
-                        for i in range(0, len(ver_left), 1):
-                            temp_a = ver_left[i][0]
-                            temp_b = ver_left[i][1]
-                            temp_dis = ver_left[i][2]
-                            temp_weight = ver_left[i][3]
-                            if abs(func_a - temp_a) <= 0.05 or abs(
-                                    temp_dis - avg_dis) <= 10.0:  # 如果新线段与已有线段的斜率相近，或者距离相近，则累加进已有线段
-                                sum_weight = temp_weight + weight_ver
-                                ver_left[i][0] = (temp_a * temp_weight + func_a * weight_ver) / sum_weight
-                                ver_left[i][1] = (temp_b * temp_weight + func_b * weight_ver) / sum_weight
-                                ver_left[i][2] = (temp_dis * temp_weight + avg_dis * weight_ver) / sum_weight
-                                ver_left[i][3] = sum_weight
-                                if ver_left[i][4] > min(dis_ver_1, dis_ver_2):
-                                    ver_left[i][4] = min(dis_ver_1, dis_ver_2)
-                                    ver_left[i][5] = x1
-                                    ver_left[i][6] = y1
-                                    ver_left[i][7] = x2
-                                    ver_left[i][8] = y2
-                                bool_newline = False
-                                break
-                        if bool_newline:
-                            temp_list = [func_a, func_b, avg_dis, weight_ver, min(dis_ver_1, dis_ver_2),
-                                         x1, y1, x2, y2]
-                            ver_left.append(temp_list)
-
-    if abs(ver_left[0][0]) > 0.0:
-        for ver_list in ver_left:
-            temp_a = ver_list[0]
-            temp_b = ver_list[1]
-            temp_dis = ver_list[2]
-            temp_weight = ver_list[3]
-            y_m = principal_y
-            y_b = img_height
-            x_m = int((y_m - temp_b) / temp_a)
-            x_b = int((y_b - temp_b) / temp_a)
-            cv2.line(rgb_rot, (x_m, y_m), (x_b, y_b), (0, 255, 0), 1)
-            cv2.line(rgb_rot, (ver_list[5], ver_list[6]), (ver_list[7], ver_list[8]), (0, 0, 255), 1)
-            cv2.putText(rgb_rot, str(ver_list[4]) + '-' + str(round(temp_dis, 0)),
-                        (int((ver_list[5] + ver_list[7]) / 2), int((ver_list[6] + ver_list[8]) / 2)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 1)
-            if dis_temp_l > temp_dis:
-                dis_temp_l = temp_dis
-    else:
-        dis_temp_l = 9999.0
-
-    for r_line in right_lines:
-        for x1, y1, x2, y2 in r_line:
-            if float(y1) > height_edge and float(y2) > height_edge:
-                dis_ver_1 = CVFunc.calc_vertical(abs(x1 - principal_x), y1, model_F, model_W, model_a, model_b)
-                dis_ver_2 = CVFunc.calc_vertical(abs(x2 - principal_x), y2, model_F, model_W, model_a, model_b)
-                x1_f = float(x1)
-                x2_f = float(x2)
-                y1_f = float(y1)
-                y2_f = float(y2)
-                func_a = (y1_f - y2_f) / (x1_f - x2_f)
-                func_b = y1_f - func_a * x1_f
-                weight_ver = CVFunc.getDist_P2P(x1, y1, x2, y2)
-                avg_dis = (dis_ver_1 + dis_ver_2) / 2
-                temp_x = int((principal_y - func_b) / func_a)
-                if temp_x > (principal_x - 50):
-                    if ver_right[0][0] == 0.0:
-                        ver_right[0][0] = func_a
-                        ver_right[0][1] = func_b
-                        ver_right[0][2] = avg_dis
-                        ver_right[0][3] = weight_ver
-                        ver_right[0][4] = min(dis_ver_1, dis_ver_2)
-                        ver_right[0][5] = x1
-                        ver_right[0][6] = y1
-                        ver_right[0][7] = x2
-                        ver_right[0][8] = y2
-                    else:
-                        bool_newline = True
-                        for i in range(0, len(ver_right), 1):
-                            temp_a = ver_right[i][0]
-                            temp_b = ver_right[i][1]
-                            temp_dis = ver_right[i][2]
-                            temp_weight = ver_right[i][3]
-                            if abs(func_a - temp_a) <= 0.05 or abs(
-                                    temp_dis - avg_dis) <= 10.0:  # 如果新线段与已有线段的斜率相近，或者距离相近，则累加进已有线段
-                                sum_weight = temp_weight + weight_ver
-                                ver_right[i][0] = (temp_a * temp_weight + func_a * weight_ver) / sum_weight
-                                ver_right[i][1] = (temp_b * temp_weight + func_b * weight_ver) / sum_weight
-                                ver_right[i][2] = (temp_dis * temp_weight + avg_dis * weight_ver) / sum_weight
-                                ver_right[i][3] = sum_weight
-                                if ver_right[i][4] > min(dis_ver_1, dis_ver_2):
-                                    ver_right[i][4] = min(dis_ver_1, dis_ver_2)
-                                    ver_right[i][5] = x1
-                                    ver_right[i][6] = y1
-                                    ver_right[i][7] = x2
-                                    ver_right[i][8] = y2
-                                bool_newline = False
-                                break
-                        if bool_newline:
-                            temp_list = [func_a, func_b, avg_dis, weight_ver, min(dis_ver_1, dis_ver_2),
-                                         x1, y1, x2, y2]
-                            ver_right.append(temp_list)
-    if abs(ver_right[0][0]) > 0.0:
-        for ver_list in ver_right:
-            temp_a = ver_list[0]
-            temp_b = ver_list[1]
-            temp_dis = ver_list[2]
-            temp_weight = ver_list[3]
-            y_m = principal_y
-            y_b = img_height
-            x_m = int((y_m - temp_b) / temp_a)
-            x_b = int((y_b - temp_b) / temp_a)
-            cv2.line(rgb_rot, (x_m, y_m), (x_b, y_b), (0, 255, 0), 1)
-            cv2.line(rgb_rot, (ver_list[5], ver_list[6]), (ver_list[7], ver_list[8]), (0, 0, 255), 1)
-            cv2.putText(rgb_rot, str(ver_list[4]) + '-' + str(round(temp_dis, 0)),
-                        (int((ver_list[5] + ver_list[7]) / 2), int((ver_list[6] + ver_list[8]) / 2)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 1)
-            if dis_temp_r > temp_dis:
-                dis_temp_r = temp_dis
-    else:
-        dis_temp_r = 9999.0
-
-    ret_value[1] = int(dis_temp_l)
-    ret_value[2] = int(dis_temp_r)
-    ret_mess += 'L & R,' + str(dis_temp_l) + ',' + str(dis_temp_r) + '\n'
-    end_time = time.time()
-    time_mess += 'Ver:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
-
-    return rgb_rot, ret_mess, err_mess, time_mess, ret_value
-
-
 # 确定摄像头数量和编号，提取从0-6
 def get_camera_id():
     list_ID = [int] * 7
@@ -309,14 +75,258 @@ def image_put(q, c_id, file_address):
 
 
 # 获得视频流帧数图片，调用测距
-def distance_get(q, q_s, lock_ser, cap_id, file_address):
+def distance_get(q_c, q_s, q_u, lock_ser, cap_id, file_address):
+    global para_lines
+    if int(cap_id) == 0:
+        model_F = float(para_lines[0].strip('\n'))
+        model_W = float(para_lines[1].strip('\n'))
+        model_a = float(para_lines[2].strip('\n'))
+        model_b = float(para_lines[3].strip('\n'))
+        principal_x = int(para_lines[4].strip('\n'))
+        principal_y = int(para_lines[5].strip('\n'))
+    else:
+        model_F = float(para_lines[6].strip('\n'))
+        model_W = float(para_lines[7].strip('\n'))
+        model_a = float(para_lines[8].strip('\n'))
+        model_b = float(para_lines[9].strip('\n'))
+        principal_x = int(para_lines[10].strip('\n'))
+        principal_y = int(para_lines[11].strip('\n'))
+
     loop_num = 0
     while True:
-        rgb_frame = q.get()
         loop_num += 1
         str_Time = datetime.datetime.now().strftime('%H%M%S-%f')
-        # 测距
-        frame_distance, ret_mess, err_mess, time_mess, ret_value = dis_calc(rgb_frame, cap_id)
+
+        ret_mess = ''  # 数据信息
+        err_mess = ''  # 报错信息
+        time_mess = ''  # 时间信息
+        ret_value = [0.0] * 3  # 0是水平线，1是左垂线，2是右垂线
+
+        # 获取图像及参数
+        rgb_frame = q_c.get()
+        img_height = int(rgb_frame.shape[0])
+        img_width = int(rgb_frame.shape[1])
+        mid_height = int(img_height / 2)
+        mid_width = int(img_width / 2)
+
+        # Canny提取边界，保留下半部分
+        start_time = time.time()
+        # gra_edge = CVFunc.find_edge_light(rgb_frame)
+        if cap_id == 0:
+            minCan = 20
+            maxCan = 50
+        else:
+            minCan = 40
+            maxCan = 100
+        gra_edge = cv2.Canny(rgb_frame, minCan, maxCan)
+        rgb_rot = rgb_frame.copy()
+        gra_edge_rot = gra_edge.copy()
+        gra_edge_rot[0:principal_y, :] = 0
+        end_time = time.time()
+        time_mess += 'Can:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
+
+        # 获取水平和垂直线
+        start_time = time.time()
+        hor_lines_points, left_lines, right_lines, err_mess_hough = CVFunc.get_HoughLinesFLR(gra_edge_rot, principal_x,
+                                                                                             principal_y)
+        err_mess += err_mess_hough
+        end_time = time.time()
+        time_mess += 'Hou:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
+
+        start_time = time.time()
+        # 画相机中心十字
+        cv2.line(rgb_rot, (principal_x, 0), (principal_x, img_height), (255, 255, 0), 1)
+        cv2.line(rgb_rot, (0, principal_y), (img_width, principal_y), (255, 255, 0), 1)
+        cv2.circle(rgb_rot, (principal_x, principal_y), 5, (255, 255, 0), 3)
+
+        # 读取超声数据，反推图像位置，画出水平线
+        ultra_list = q_u.get()
+        ultra_value = ultra_list[cap_id]
+        if ultra_value > 0 and (ultra_value - model_b) != 0:
+            height_ultra = int(((model_F * model_W) / ultra_value - model_b) / model_a)
+            cv2.line(rgb_rot, (0, height_ultra), (img_width, height_ultra), (255, 255, 255), 1)
+            cv2.putText(rgb_rot, str(ultra_value), (mid_width, height_ultra), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                        (255, 255, 255), 1)
+
+        # 计算水平线到相机的距离，输出最近距离，并画出水平线
+        dis_temp = 9999.0
+        height_edge = - model_b / model_a
+        axis_temp_h = 0
+        try:
+            for hor_point in hor_lines_points:
+                if float(hor_point[0]) > height_edge:
+                    dis_hor = CVFunc.calc_horizontal(hor_point[0], model_F, model_W, model_a, model_b)
+                    dis_hor = round(dis_hor, 2)
+                    if dis_hor < dis_temp:
+                        dis_temp = dis_hor
+                        axis_temp_h = hor_point[0]
+            cv2.line(rgb_rot, (0, axis_temp_h), (img_width, axis_temp_h), (255, 0, 0), 1)
+            cv2.putText(rgb_rot, str(dis_temp), (mid_width, axis_temp_h), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                        (255, 0, 0), 1)
+        except Exception as e:
+            err_mess += 'calc horizontal line\n' + str(e) + '\n'
+
+        nearest_hor = int(dis_temp)
+        if 0 < ultra_value < nearest_hor:
+            nearest_hor = ultra_value
+        ret_value[0] = nearest_hor
+        ret_mess += 'F,' + str(nearest_hor) + '\n'
+
+        # 计算左垂直线到图像中轴的距离
+        dis_temp_l = 9999.0
+        ver_left = [[0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0]]  # 平均a，平均b，平均dis，累加权重，最小dis，最小x1，最小y1，最小x2，最小y2
+        for l_line in left_lines:
+            for x1, y1, x2, y2 in l_line:
+                if float(y1) > height_edge and float(y2) > height_edge and min(y1, y2) > (
+                        principal_y + 50):  # 剔除过于接近中线的数据
+                    dis_ver_1 = CVFunc.calc_vertical(abs(x1 - principal_x), y1, model_F, model_W, model_a, model_b)
+                    dis_ver_2 = CVFunc.calc_vertical(abs(x2 - principal_x), y2, model_F, model_W, model_a, model_b)
+                    x1_f = float(x1)
+                    x2_f = float(x2)
+                    y1_f = float(y1)
+                    y2_f = float(y2)
+                    func_a = (y1_f - y2_f) / (x1_f - x2_f)
+                    func_b = y1_f - func_a * x1_f
+                    weight_ver = CVFunc.getDist_P2P(x1, y1, x2, y2)
+                    avg_dis = (dis_ver_1 + dis_ver_2) / 2
+                    temp_x = int((principal_y - func_b) / func_a)
+                    if temp_x < (principal_x + 50):
+                        if ver_left[0][0] == 0.0:
+                            ver_left[0][0] = func_a
+                            ver_left[0][1] = func_b
+                            ver_left[0][2] = avg_dis
+                            ver_left[0][3] = weight_ver
+                            ver_left[0][4] = min(dis_ver_1, dis_ver_2)
+                            ver_left[0][5] = x1
+                            ver_left[0][6] = y1
+                            ver_left[0][7] = x2
+                            ver_left[0][8] = y2
+                        else:
+                            bool_newline = True
+                            for i in range(0, len(ver_left), 1):
+                                temp_a = ver_left[i][0]
+                                temp_b = ver_left[i][1]
+                                temp_dis = ver_left[i][2]
+                                temp_weight = ver_left[i][3]
+                                if abs(func_a - temp_a) <= 0.05 or abs(
+                                        temp_dis - avg_dis) <= 10.0:  # 如果新线段与已有线段的斜率相近，或者距离相近，则累加进已有线段
+                                    sum_weight = temp_weight + weight_ver
+                                    ver_left[i][0] = (temp_a * temp_weight + func_a * weight_ver) / sum_weight
+                                    ver_left[i][1] = (temp_b * temp_weight + func_b * weight_ver) / sum_weight
+                                    ver_left[i][2] = (temp_dis * temp_weight + avg_dis * weight_ver) / sum_weight
+                                    ver_left[i][3] = sum_weight
+                                    if ver_left[i][4] > min(dis_ver_1, dis_ver_2):
+                                        ver_left[i][4] = min(dis_ver_1, dis_ver_2)
+                                        ver_left[i][5] = x1
+                                        ver_left[i][6] = y1
+                                        ver_left[i][7] = x2
+                                        ver_left[i][8] = y2
+                                    bool_newline = False
+                                    break
+                            if bool_newline:
+                                temp_list = [func_a, func_b, avg_dis, weight_ver, min(dis_ver_1, dis_ver_2),
+                                             x1, y1, x2, y2]
+                                ver_left.append(temp_list)
+        if abs(ver_left[0][0]) > 0.0:
+            for ver_list in ver_left:
+                temp_a = ver_list[0]
+                temp_b = ver_list[1]
+                temp_dis = ver_list[2]
+                temp_weight = ver_list[3]
+                y_m = principal_y
+                y_b = img_height
+                x_m = int((y_m - temp_b) / temp_a)
+                x_b = int((y_b - temp_b) / temp_a)
+                cv2.line(rgb_rot, (x_m, y_m), (x_b, y_b), (0, 255, 0), 1)
+                cv2.line(rgb_rot, (ver_list[5], ver_list[6]), (ver_list[7], ver_list[8]), (0, 0, 255), 1)
+                cv2.putText(rgb_rot, str(ver_list[4]) + '-' + str(round(temp_dis, 0)),
+                            (int((ver_list[5] + ver_list[7]) / 2), int((ver_list[6] + ver_list[8]) / 2)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 1)
+                if dis_temp_l > temp_dis:
+                    dis_temp_l = temp_dis
+        else:
+            dis_temp_l = 9999.0
+        ret_value[1] = int(dis_temp_l)
+        ret_mess += 'L,' + str(dis_temp_l) + '\n'
+
+        # 计算右垂直线到图像中轴的距离
+        dis_temp_r = 9999.0
+        ver_right = [[0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0]]  # 平均a，平均b，平均dis，累加权重，最小dis，最小x1，最小y1，最小x2，最小y2
+        for r_line in right_lines:
+            for x1, y1, x2, y2 in r_line:
+                if float(y1) > height_edge and float(y2) > height_edge:
+                    dis_ver_1 = CVFunc.calc_vertical(abs(x1 - principal_x), y1, model_F, model_W, model_a, model_b)
+                    dis_ver_2 = CVFunc.calc_vertical(abs(x2 - principal_x), y2, model_F, model_W, model_a, model_b)
+                    x1_f = float(x1)
+                    x2_f = float(x2)
+                    y1_f = float(y1)
+                    y2_f = float(y2)
+                    func_a = (y1_f - y2_f) / (x1_f - x2_f)
+                    func_b = y1_f - func_a * x1_f
+                    weight_ver = CVFunc.getDist_P2P(x1, y1, x2, y2)
+                    avg_dis = (dis_ver_1 + dis_ver_2) / 2
+                    temp_x = int((principal_y - func_b) / func_a)
+                    if temp_x > (principal_x - 50):
+                        if ver_right[0][0] == 0.0:
+                            ver_right[0][0] = func_a
+                            ver_right[0][1] = func_b
+                            ver_right[0][2] = avg_dis
+                            ver_right[0][3] = weight_ver
+                            ver_right[0][4] = min(dis_ver_1, dis_ver_2)
+                            ver_right[0][5] = x1
+                            ver_right[0][6] = y1
+                            ver_right[0][7] = x2
+                            ver_right[0][8] = y2
+                        else:
+                            bool_newline = True
+                            for i in range(0, len(ver_right), 1):
+                                temp_a = ver_right[i][0]
+                                temp_b = ver_right[i][1]
+                                temp_dis = ver_right[i][2]
+                                temp_weight = ver_right[i][3]
+                                if abs(func_a - temp_a) <= 0.05 or abs(
+                                        temp_dis - avg_dis) <= 10.0:  # 如果新线段与已有线段的斜率相近，或者距离相近，则累加进已有线段
+                                    sum_weight = temp_weight + weight_ver
+                                    ver_right[i][0] = (temp_a * temp_weight + func_a * weight_ver) / sum_weight
+                                    ver_right[i][1] = (temp_b * temp_weight + func_b * weight_ver) / sum_weight
+                                    ver_right[i][2] = (temp_dis * temp_weight + avg_dis * weight_ver) / sum_weight
+                                    ver_right[i][3] = sum_weight
+                                    if ver_right[i][4] > min(dis_ver_1, dis_ver_2):
+                                        ver_right[i][4] = min(dis_ver_1, dis_ver_2)
+                                        ver_right[i][5] = x1
+                                        ver_right[i][6] = y1
+                                        ver_right[i][7] = x2
+                                        ver_right[i][8] = y2
+                                    bool_newline = False
+                                    break
+                            if bool_newline:
+                                temp_list = [func_a, func_b, avg_dis, weight_ver, min(dis_ver_1, dis_ver_2),
+                                             x1, y1, x2, y2]
+                                ver_right.append(temp_list)
+        if abs(ver_right[0][0]) > 0.0:
+            for ver_list in ver_right:
+                temp_a = ver_list[0]
+                temp_b = ver_list[1]
+                temp_dis = ver_list[2]
+                temp_weight = ver_list[3]
+                y_m = principal_y
+                y_b = img_height
+                x_m = int((y_m - temp_b) / temp_a)
+                x_b = int((y_b - temp_b) / temp_a)
+                cv2.line(rgb_rot, (x_m, y_m), (x_b, y_b), (0, 255, 0), 1)
+                cv2.line(rgb_rot, (ver_list[5], ver_list[6]), (ver_list[7], ver_list[8]), (0, 0, 255), 1)
+                cv2.putText(rgb_rot, str(ver_list[4]) + '-' + str(round(temp_dis, 0)),
+                            (int((ver_list[5] + ver_list[7]) / 2), int((ver_list[6] + ver_list[8]) / 2)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 1)
+                if dis_temp_r > temp_dis:
+                    dis_temp_r = temp_dis
+        else:
+            dis_temp_r = 9999.0
+        ret_value[2] = int(dis_temp_r)
+        ret_mess += 'R,' + str(dis_temp_r) + '\n'
+        end_time = time.time()
+        time_mess += 'Cal:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
+
         # 显示及保存图片
         # cv2.imshow('Cap', frame_distance)
         # cv2.imwrite(file_address + 'C' + str(cap_id) + '-' + str_Time + '.jpg', rgb_frame)
@@ -406,26 +416,6 @@ def uart_ups_get(q0, q1, lock_ser, file_address):
             str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
             print(str_time, se_send)
 
-        # 锁定后读取串口数据
-        lock_ser.acquire()
-        try:
-            se.write('1'.encode())
-            time.sleep(0.1)
-            line = se.readline()
-            if line:
-                file_serial = open(file_address + 'Serial.txt', 'a')
-                str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-                rec_hex = binascii.b2a_hex(line)
-                file_serial.write(str_time + str(rec_hex) + '\n')
-                s1 = str(rec_hex[2:6].decode())
-                s2 = str(rec_hex[6:10].decode())
-                n1 = int(s1, 16)
-                n2 = int(s2, 16)
-                print(str_time, n1, n2)
-                file_serial.close()
-        except Exception as e:
-            print(e)
-        lock_ser.release()
         # 读取UPS
         if loop_num % 20 == 0:
             file_rec = open(file_address + 'UPS.txt', 'a')
@@ -442,6 +432,34 @@ def uart_ups_get(q0, q1, lock_ser, file_address):
                 i_last = i_value
         end_time = time.time()
         # print('timer', str(loop_num), str(round((end_time - start_time) * 1000, 4)))
+
+
+# 串口读取超声数据
+def ultra_get(q_u, lock_ser, file_address):
+    global se
+    while True:
+        try:
+            se.write('1'.encode())
+            time.sleep(0.1)
+            line = se.readline()
+            lock_ser.acquire()
+            if line:
+                ultra_list = [0] * 2
+                file_serial = open(file_address + 'Serial.txt', 'a')
+                str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+                rec_hex = binascii.b2a_hex(line)
+                file_serial.write(str_time + str(rec_hex) + '\n')
+                file_serial.close()
+                if str(rec_hex[0:2].decode()) == 'ff':
+                    s1 = str(rec_hex[2:6].decode())
+                    s2 = str(rec_hex[6:10].decode())
+                    ultra_list[0] = int(s1, 16)
+                    ultra_list[1] = int(s2, 16)
+                    q_u.put(ultra_list)
+                    q_u.get() if q_u.qsize() > 1 else time.sleep(0.005)
+        except Exception as e:
+            print(e)
+        lock_ser.release()
 
 
 def quit_all():
@@ -470,22 +488,30 @@ def run_multi_camera():
     mp.set_start_method(method='spawn')  # init
     processes = []
     lock = mp.Lock()
-    queue_c0 = mp.Queue(maxsize=2)
-    queue_c1 = mp.Queue(maxsize=2)
+    queue_cam0 = mp.Queue(maxsize=2)
+    queue_cam1 = mp.Queue(maxsize=2)
     queue_s0 = mp.Queue(maxsize=2)
     queue_s1 = mp.Queue(maxsize=2)
+    queue_ultra = mp.Queue(maxsize=3)
     if cap_num == 1:
-        processes.append(mp.Process(target=image_put, args=(queue_c0, 0, str_fileAddress)))
-        processes.append(mp.Process(target=distance_get, args=(queue_c0, queue_s0, lock, 0, str_fileAddress)))
+        processes.append(
+            mp.Process(target=image_put, args=(queue_cam0, cap_list[0], str_fileAddress)))
+        processes.append(
+            mp.Process(target=distance_get, args=(queue_cam0, queue_s0, queue_ultra, lock, 0, str_fileAddress)))
     elif cap_num > 1:
-        processes.append(mp.Process(target=image_put, args=(queue_c0, 0, str_fileAddress)))
-        processes.append(mp.Process(target=distance_get, args=(queue_c0, queue_s0, lock, 0, str_fileAddress)))
-        processes.append(mp.Process(target=image_put, args=(queue_c1, 1, str_fileAddress)))
-        processes.append(mp.Process(target=distance_get, args=(queue_c1, queue_s1, lock, 1, str_fileAddress)))
+        processes.append(
+            mp.Process(target=image_put, args=(queue_cam0, cap_list[0], str_fileAddress)))
+        processes.append(
+            mp.Process(target=distance_get, args=(queue_cam0, queue_s0, queue_ultra, lock, 0, str_fileAddress)))
+        processes.append(
+            mp.Process(target=image_put, args=(queue_cam1, cap_list[1], str_fileAddress)))
+        processes.append(
+            mp.Process(target=distance_get, args=(queue_cam1, queue_s1, queue_ultra, lock, 1, str_fileAddress)))
     else:
         quit()
 
     processes.append(mp.Process(target=uart_ups_get, args=(queue_s0, queue_s1, lock, str_fileAddress)))
+    processes.append(mp.Process(target=ultra_get, args=(queue_ultra, lock, str_fileAddress)))
 
     for process in processes:
         process.daemon = True

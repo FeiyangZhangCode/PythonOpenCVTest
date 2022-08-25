@@ -1,22 +1,20 @@
+import openpyxl
+import datetime
+import time
 
-
-
-if __name__ == '__main__':
-    ver_left = [[0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0]]
-
-    ver_left[0][0] = 1.1
-    ver_left[0][1] = 2.1
-    ver_left[0][2] = 1.3
-    ver_left[0][3] = 4.1
-    ver_left[0][4] = 1.5
-    ver_left[0][5] = 1
-    ver_left[0][6] = 2
-    ver_left[0][7] = 3
-    ver_left[0][8] = 4
-    temp_list = [2.0, 3.1, 2.2, 3.3, 1.4, 4, 3, 2, 1]
-    ver_left.append(temp_list)
-    for ver_list in ver_left:
-        for a, b, d_a, w, d_m, x1, y1, x2, y2 in ver_list:
-            print(a, b, d_a, w, d_m, x1, y1, x2, y2)
-
-
+start_time = time.time()
+work_book = openpyxl.load_workbook('./TestData/MPU.xlsx')
+work_sheet = work_book['Sheet1']
+# print(work_sheet.max_column)
+# print(work_sheet.max_row)
+# print(work_sheet.cell(2, 1).value)
+row_num = work_sheet.max_row
+work_sheet.cell(row_num + 1, 1).value = 'add00'
+work_sheet.cell(row_num + 1, 2).value = 'add01'
+work_book.save('./TestData/MPU.xlsx')
+row_num = work_sheet.max_row
+work_sheet.cell(row_num + 1, 1).value = 'add10'
+work_sheet.cell(row_num + 1, 2).value = 'add11'
+work_book.save('./TestData/MPU.xlsx')
+end_time = time.time()
+print(str(round((end_time - start_time) * 1000, 4)))

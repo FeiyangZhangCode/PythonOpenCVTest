@@ -163,11 +163,8 @@ def get_parameter(gra_edge):
 
 # 开始主程序
 # 提取图像
-model_F = 1120
-model_W = 1180
-principal_x = 1006
-principal_y = 605
-file_name = 'Vertical-20cm-90'
+
+file_name = 'Cali-120-720'
 rgb_frame = cv2.imread('./TestData/' + file_name + '.jpg')
 # 获取图像位置参数
 img_test = rgb_frame.copy()
@@ -176,15 +173,24 @@ img_width = int(img_test.shape[1])
 mid_height = int(img_height / 2)
 mid_width = int(img_width / 2)
 
+model_F = 940
+model_W = 101
+principal_x = 1092
+principal_y = 571
+if img_height < 1080:
+    principal_y = int(principal_y * img_height / 1080)
+if img_width < 1920:
+    principal_x = int(principal_x * img_width / 1920)
+
 # 提取红色线
-# gra_red = get_red(img_test)
+gra_red = get_red(img_test)
 
 # Canny提取边界
-gra_edge = cv2.Canny(rgb_frame, 70, 140)
+gra_edge = cv2.Canny(gra_red, 70, 140)
 
 # 手动去除校准用红色区域
 gra_edge[0:principal_y, :] = 0
-cv2.imshow('gra', gra_edge)
+# cv2.imshow('gra', gra_edge)
 
 # cv2.imwrite('./TestData/' + file_name + '-gra.jpg', gra_edge)
 # 计算参数，返回水平线高度，垂直线HoughLinesP结果，从右向左的第3和第2条线的a和b值
@@ -192,8 +198,6 @@ hor_lines_points, ver_lines, right_formular, left_formular = get_parameter(gra_e
 
 model_a = right_formular[0] - left_formular[0]
 model_b = right_formular[1] - left_formular[1]
-
-print(model_a, model_b)
 
 # 画图像中心十字
 cv2.line(img_test, (mid_width, 0), (mid_width, img_height), (255, 0, 255), 1)
@@ -235,6 +239,7 @@ for ver_line in ver_lines:
                     (0, 255, 0), 1)
 
 cv2.imshow('test', img_test)
+print(model_a, model_b, principal_x, principal_y)
 # cv2.imwrite('./TestData/' + file_name + '-dis.jpg', img_test)
 
 cv2.waitKey(0)

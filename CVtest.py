@@ -73,7 +73,7 @@ def get_HoughLinesP(gra_edge, p_x, p_y):
                         result = 90
                     # if abs(result) > 2 and ((x2_p < (mid_width_HLP - 300)) or (x2_p > (mid_width_HLP + 300))):
                     if 88 >= abs(result) > 2:
-                        # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
+                        cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
                         # num_lines += 1
                         ver_lines_org.append(line)
                         if (result > 0) and (max(x1_p, x2_p) < p_x) and (min(y1_p, y2_p) > p_y):      # 提取左下角垂线
@@ -81,7 +81,7 @@ def get_HoughLinesP(gra_edge, p_x, p_y):
                         elif (result < 0) and (min(x1_p, x2_p) > p_x) and (min(y1_p, y2_p) > p_y):      # 提取右下角垂线
                             right_lines.append(line)
 
-
+    # cv2.imshow('Hough', gra_lines)
     # 水平线数组
     hor_height = []
     temp_height = 0
@@ -145,9 +145,10 @@ def dis_calc(rgb_frame, c_id):
 
     # Canny提取边界
     start_time = time.time()
-    gra_edge = CVFunc.find_edge_light(rgb_frame)
+    # gra_edge = CVFunc.find_edge_light(rgb_frame)
     # gra_edge_1 = CVFunc.find_edge(rgb_frame)
-    # gra_edge = cv2.Canny(rgb_frame, 70, 140)
+    gra_edge = cv2.Canny(rgb_frame, 20, 50)
+    # cv2.imshow('Canny', gra_edge)
     end_time = time.time()
     time_mess += 'Can:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
     # 截取下半部
@@ -184,13 +185,6 @@ def dis_calc(rgb_frame, c_id):
             cv2.line(rgb_rot, (0, hor_point[0]), (img_width, hor_point[0]), (255, 0, 0), 1)
             cv2.putText(rgb_rot, str(dis_hor), (mid_width, hor_point[0]), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                         (255, 0, 0), 1)
-        # else:
-        #     cv2.line(rgb_rot, (0, hor_point[0]), (img_width, hor_point[0]), (255, 0, 0), 1)
-        #     cv2.putText(rgb_rot, 'out', (mid_width, hor_point[0]), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-        #                 (255, 0, 0), 1)
-    # cv2.line(rgb_rot, (0, axis_temp_h), (img_width, axis_temp_h), (255, 0, 0), 1)
-    # cv2.putText(rgb_rot, str(dis_temp), (mid_width, axis_temp_h), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-    #             (255, 0, 0), 1)
 
     ret_value[0] = int(dis_temp)
     ret_mess += 'F,' + str(dis_temp) + '\n'
@@ -201,22 +195,12 @@ def dis_calc(rgb_frame, c_id):
     start_time = time.time()
     dis_temp_l = 9999.0
     dis_temp_r = 9999.0
-    axis_temp_l = [0] * 4
-    axis_temp_r = [0] * 4
 
     ver_left = [[0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0]]      # 平均a，平均b，平均dis，累加权重，最小dis，最小x1，最小y1，最小x2，最小y2
     ver_right = [[0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0]]
 
     for l_line in left_lines:
         for x1, y1, x2, y2 in l_line:
-            # cv2.line(rgb_rot, (x1, y1), (x2, y2), (0, 255, 0), 1)
-            # dis_ver_1 = CVFunc.calc_vertical(abs(x1 - principal_x), y1, model_F, model_W, model_a, model_b)
-            # dis_ver_2 = CVFunc.calc_vertical(abs(x2 - principal_x), y2, model_F, model_W, model_a, model_b)
-            # cv2.putText(rgb_rot, str(round(dis_ver_1, 0)), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-            #             (0, 255, 0), 1)
-            # cv2.putText(rgb_rot, str(round(dis_ver_2, 0)), (x2, y2), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-            #             (0, 255, 0), 1)
-
             if float(y1) > hight_edge and float(y2) > hight_edge and min(y1, y2) > (principal_y + 50):     # 剔除过于接近中线的数据
                 dis_ver_1 = CVFunc.calc_vertical(abs(x1 - principal_x), y1, model_F, model_W, model_a, model_b)
                 dis_ver_2 = CVFunc.calc_vertical(abs(x2 - principal_x), y2, model_F, model_W, model_a, model_b)
@@ -365,20 +349,19 @@ def dis_calc(rgb_frame, c_id):
     ret_mess += 'L & R,' + str(dis_temp_l) + ',' + str(dis_temp_r) + '\n'
     end_time = time.time()
     time_mess += 'Ver:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
-    # print('Ver:' + str(round((end_time - start_time) * 1000, 4)) + 'ms')
-    # cv2.putText(rgb_rot, str(ret_value[1]) + '+' + str(ret_value[2]), (mid_width, img_height - 100),
-    #             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
 
     return rgb_rot, ret_mess, err_mess_all, time_mess, ret_value, gra_edge
 
 
 # 开始主程序
-# frame0 = cv2.imread('../TestData-1/org/C1-111500-686370.jpg')
-# frame0_distance, ret0_mess, err0_mess, time0_mess, ret0_value, frame0_edge = dis_calc(frame0, 1)
+# frame0 = cv2.imread('./TestData/Cali-173157.jpg')
+# # frame0_distance, ret0_mess, err0_mess, time0_mess, ret0_value, frame0_edge = dis_calc(frame0, 1)
+# frame0_resize = cv2.resize(frame0, (1280, 720))
+# cv2.imwrite('./TestData/Cali-120-720.jpg', frame0_resize)
 # cv2.imshow('Dis', frame0_distance)
-# # cv2.imshow('Gra', frame0_edge)
-# # print(ret0_value)
-# # print(time0_mess)
+# cv2.imshow('Gra', frame0_edge)
+# print(ret0_value)
+# print(time0_mess)
 # cv2.waitKey(0)
 
 
@@ -389,7 +372,7 @@ while (cap_id != 0) and (cap_id != 1):
 
 # 新建文件夹,读取时间作为文件名
 str_fileAddress = '../TestData-1/'
-str_fileHome = str_fileAddress + 'org-90/'
+str_fileHome = str_fileAddress + 'sunny-up-90/'
 str_Time = datetime.datetime.now().strftime('%Y%m%d-%H%M')
 file_rec = open(str_fileAddress + str_Time + '.txt', 'w', encoding='utf-8')
 str_fileAddress = str_fileAddress + str_Time
@@ -403,20 +386,22 @@ title_li = sorted(title_li, key=lambda x: os.path.getmtime(os.path.join(str_file
 loop_num = 0
 for title in title_li:
     # print(title)
+    start_time = time.time()
     loop_num = loop_num + 1
     str_Time = datetime.datetime.now().strftime('%H%M%S')
     file_rec.write(str_Time + ',' + str(loop_num) + ',' + title + '\n')
     print(str_Time + ',' + str(loop_num) + ',' + title)
     frame0 = cv2.imread(str_fileHome + title)
-    frame0_distance, ret0_mess, err0_mess, time0_mess, ret0_value, frame0_edge = dis_calc(frame0, cap_id)
+    frame0_resize = cv2.resize(frame0, (1280, 720))
+    # frame0_distance, ret0_mess, err0_mess, time0_mess, ret0_value, frame0_edge = dis_calc(frame0, cap_id)
     # 屏幕输出
-    print('C' + str(cap_id) + '  ' + str_Time + '  ' + str(loop_num))
-    front_value = 'F' + str(ret0_value[0])
-    print(front_value)
-    left_value = 'L' + str(ret0_value[1])
-    print(left_value)
-    right_value = 'R' + str(ret0_value[2])
-    print(right_value)
+    # print('C' + str(cap_id) + '  ' + str_Time + '  ' + str(loop_num))
+    # front_value = 'F' + str(ret0_value[0])
+    # print(front_value)
+    # left_value = 'L' + str(ret0_value[1])
+    # print(left_value)
+    # right_value = 'R' + str(ret0_value[2])
+    # print(right_value)
 
     # if len(ret0_mess) > 0:
     #     # file_rec.write('Get Data:\n' + ret0_mess)
@@ -426,9 +411,13 @@ for title in title_li:
     #     print('Error:\n' + err0_mess)
     # if len(time0_mess) > 0:
     #     print('Timer:\n' + time0_mess)
-    cv2.imshow('Dis', frame0_distance)
-    cv2.imwrite(str_fileAddress + title, frame0_distance)
+    # cv2.imshow('Dis', frame0_distance)
+    # cv2.imwrite(str_fileAddress + title, frame0_distance)
     # cv2.imwrite(str_fileAddress + 'g-' + title, frame0_edge)
+    cv2.imwrite(str_fileAddress + title, frame0_resize)
+
+    end_time = time.time()
+    print(str(round((end_time - start_time) * 1000, 4)) + 'ms\n')
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
