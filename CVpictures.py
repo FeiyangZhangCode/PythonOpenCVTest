@@ -391,6 +391,9 @@ for title in title_li:
     print(str_Time + ',' + str(loop_num) + ',' + title)
     frame0 = cv2.imread(str_fileHome + title)
     frame0_distance, ret0_mess, err0_mess, time0_mess, ret0_value, frame0_edge = dis_calc(frame0, cap_id)
+    # 调整分辨率
+    # frame0_resize = cv2.resize(frame0, (1280, 720))
+    # cv2.imwrite(str_fileAddress + title, frame0_resize)
     # 屏幕输出
     # print('C' + str(cap_id) + '  ' + str_Time + '  ' + str(loop_num))
     # front_value = 'F' + str(ret0_value[0])
