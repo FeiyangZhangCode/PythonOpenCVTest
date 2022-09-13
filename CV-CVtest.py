@@ -180,8 +180,8 @@ err_mess = ''  # 报错信息
 time_mess = ''  # 时间信息
 ret_value = [0] * 4  # 0是水平线，1是左垂线，2是右垂线，3是超声波
 
-rgb_frame = cv2.imread('./TestData/Angle/14d48.jpg')
-angle_set = -14.48  # 车头向左偏，需要顺时针旋转，角度为负。车头向右偏，需要逆时针旋转，角度为正。
+rgb_frame = cv2.imread('./TestData/Angle/10d81.jpg')
+angle_set = -10.81  # 车头向左偏，需要顺时针旋转，角度为负。车头向右偏，需要逆时针旋转，角度为正。
 img_height = int(rgb_frame.shape[0])
 img_width = int(rgb_frame.shape[1])
 mid_height = int(img_height / 2)
@@ -193,35 +193,45 @@ gra_red = get_red(rgb_frame)
 # Canny提取边界，保留下半部分
 start_time = time.time()
 # gra_edge = CVFunc.find_edge_light(rgb_frame)
-minCan = 70
-maxCan = 140
+minCan = 40
+maxCan = 100
 gra_edge = cv2.Canny(gra_red, minCan, maxCan)
+end_time = time.time()
+time_mess += 'Canny:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
+
+start_time = time.time()
 rgb_rot = rgb_frame.copy()
 gra_edge_rot = gra_edge.copy()
 gra_edge_rot[0:principal_y + 170, :] = 0
 end_time = time.time()
-time_mess += 'Can:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
+time_mess += 'Half:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
 
 rgb_type_imu = rgb_frame.copy()
-rgb_type_line = rgb_frame.copy()
 
 # 获取水平和垂直线
-start_time = time.time()
+
 try:
-    lines = cv2.HoughLinesP(gra_edge_rot, rho=1.0, theta=np.pi / 180, threshold=50, minLineLength=50, maxLineGap=20)
+    start_time = time.time()
+    lines = cv2.HoughLinesP(gra_edge_rot, rho=1.0, theta=np.pi / 180, threshold=20, minLineLength=20, maxLineGap=5)
     num_line = 0
     num_ver = 0
     num_hor = 0
     data_ver = np.zeros((0, 3), dtype=float)  # 垂直线数据，0是最接近中轴的w（x）值，1是最接近相机的h（y）值，2是最远离相机的h（y）值
     data_hor = np.zeros((0, 3), dtype=float)  # 水平线数据，0是最接近相机的h（y）值，1是最左侧（最小）的w（x）值，2是最右侧（最大）的w（x）值
 
+    end_time = time.time()
+    time_mess += 'Hough:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
+
     # xls = xlwt.Workbook()
     # sheet = xls.add_sheet('sheet1', cell_overwrite_ok=True)
-
+    start_time = time.time()
     for line in lines:
         for x1_p, y1_p, x2_p, y2_p in line:
-            # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
-            if getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 50.0:
+            cv2.line(rgb_rot, (x1_p, y1_p), (x2_p, y2_p), (255, 0, 0), 1)
+            if getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 20.0:
+                x_plt = np.array([x1_p, x2_p])
+                y_plt = np.array([y1_p, y2_p])
+                plt.plot(x_plt, y_plt, 'org')
                 num_line += 1
                 # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
                 x_mid = int((x1_p + x2_p) / 2)
@@ -238,24 +248,25 @@ try:
                     tan_line = 90
                 else:
                     tan_line = np.arctan((h1 - h2) / (w1 - w2)) * 57.29577
-                if abs(tan_line - angle_set) > 10:
-                    tan_line = tan_line - 90.0
-                str_func = ''
-                if h1 == h2:
-                    str_func = 'h=' + str(round(h1, 2))
-                elif w1 == w2:
-                    str_func = 'w=' + str(round(w1, 2))
-                else:
-                    temp_a = (h1 - h2) / (w1 - w2)
-                    temp_b = h1 - temp_a * w1
-                    str_func = 'h=' + str(round(temp_a, 2)) + 'w+' + str(round(temp_b, 2))
+                # if abs(tan_line - angle_set) > 10:
+                # if abs(tan_line) > 60:
+                #     tan_line = tan_line - 90.0
+                # str_func = ''
+                # if h1 == h2:
+                #     str_func = 'h=' + str(round(h1, 2))
+                # elif w1 == w2:
+                #     str_func = 'w=' + str(round(w1, 2))
+                # else:
+                #     temp_a = (h1 - h2) / (w1 - w2)
+                #     temp_b = h1 - temp_a * w1
+                #     str_func = 'h=' + str(round(temp_a, 2)) + 'w+' + str(round(temp_b, 2))
 
+                cv2.line(rgb_rot, (x1_p, y1_p), (x2_p, y2_p), (255, 0, 0), 1)
                 # cv2.putText(rgb_rot, str_func, (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX,
                 #             0.6, (255, 0, 0), 1)
                 cv2.putText(rgb_rot, str(round(tan_line, 2)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX,
                             0.6, (255, 0, 0), 1)
 
-                cv2.line(rgb_rot, (x1_p, y1_p), (x2_p, y2_p), (255, 0, 0), 1)
                 # x_plt = np.array([w1, w2])
                 # y_plt = np.array([h1, h2])
                 # plt.plot(x_plt, y_plt, 'r')
@@ -267,6 +278,20 @@ try:
                 #             0.4, (255, 0, 0), 1)
                 # cv2.putText(rgb_rot, str(w2) + ',' + str(h2), (x2_p, y2_p), cv2.FONT_HERSHEY_SIMPLEX,
                 #             0.4, (255, 0, 0), 1)
+    end_time = time.time()
+    time_mess += 'Angle:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
+
+    start_time = time.time()
+    for line in lines:
+        for x1_p, y1_p, x2_p, y2_p in line:
+            # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
+            if getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 50.0:
+                x_mid = int((x1_p + x2_p) / 2)
+                y_mid = int((y1_p + y2_p) / 2)
+                h1 = CVFunc.calc_horizontal(y1_p, model_F, model_W, model_a, model_b)
+                h2 = CVFunc.calc_horizontal(y2_p, model_F, model_W, model_a, model_b)
+                w1 = CVFunc.calc_vertical((x1_p - principal_x), y1_p, model_F, model_W, model_a, model_b)
+                w2 = CVFunc.calc_vertical((x2_p - principal_x), y2_p, model_F, model_W, model_a, model_b)
 
                 # 第一种方式，根据IMU角度进行旋转
                 x1_imu, y1_imu = points_rotate(angle_set, w1, h1)
@@ -292,7 +317,7 @@ try:
                 if y1_imu == y2_imu:  # 水平线
                     num_hor += 1
                     temp_show = 'Y' + str(round(y1_imu, 0))
-                    # 如果距离中轴的差值不超过10，则认为是同一条，按照最接近中轴的值进行融合。否则新增为新一条。
+                    # 如果距离中轴的差值不超过20，则认为是同一条，按照最接近中轴的值进行融合。否则新增为新一条。
                     temp_left = min(x1_imu, x2_imu)
                     temp_right = max(x1_imu, x2_imu)
                     if len(data_hor) == 0:
@@ -300,7 +325,7 @@ try:
                     else:
                         new_hor = True
                         for values_hor in data_hor:
-                            if abs(values_hor[0] - y1_imu) < 10:
+                            if abs(values_hor[0] - y1_imu) < 20:
                                 if abs((values_hor[2] + values_hor[1]) / 2) > abs((temp_right + temp_left) / 2):
                                     values_hor[0] = y1_imu
                                 values_hor[1] = min(values_hor[1], temp_left)
@@ -312,7 +337,7 @@ try:
                 elif x1_imu == x2_imu:
                     num_ver += 1
                     temp_show = 'X' + str(round(x1_imu, 0))
-                    # 如果距离中轴的差值不超过10，则认为是同一条，按最接近中轴进行融合。否则新增为新一条。
+                    # 如果距离中轴的差值不超过20，则认为是同一条，按最接近中轴进行融合。否则新增为新一条。
                     temp_button = min(y1_imu, y2_imu)
                     temp_top = max(y1_imu, y2_imu)
                     if len(data_ver) == 0:
@@ -320,7 +345,7 @@ try:
                     else:
                         new_ver = True
                         for values_ver in data_ver:
-                            if abs(values_ver[0] - x1_imu) < 5:
+                            if abs(values_ver[0] - x1_imu) < 20:
                                 if abs(values_ver[0]) > abs(x1_imu):
                                     values_ver[0] = x1_imu
                                 temp_v = min(values_ver[1], temp_button)
@@ -344,27 +369,11 @@ try:
                 # sheet.write(num_line, 6, y1_imu)
                 # sheet.write(num_line, 7, x2_imu)
                 # sheet.write(num_line, 8, y2_imu)
-                # 第二种方式，根据自身线段角度调整
-                # cv2.line(rgb_type_line, (x1_p, y1_p), (x2_p, y2_p), (255, 0, 0), 1)
-                # tan_line = np.arctan((h1 - h2) / (w1 - w2)) * 57.29577
-                # if abs(tan_line - angle_set) > 10:
-                #     tan_line = tan_line - 90.0
-                # x1_line, y1_line = points_rotate(tan_line, w1, h1)
-                # x2_line, y2_line = points_rotate(tan_line, w2, h2)
-                # temp_show = str(round(tan_line, 4)) + '\n' + str(round(x1_line, 0)) + ',' + str(
-                #     round(y1_line, 0)) + '\n' + str(round(x2_line, 0)) + ',' + str(round(y2_line, 0))
-                # cv2.putText(rgb_type_line, temp_show, (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
-                # x_plt = np.array([x1_line, x2_line])
-                # y_plt = np.array([y1_line, y2_line])
-                # plt.plot(x_plt, y_plt, 'b')
 
-                # sheet.write(num_line, 9, x1_line)
-                # sheet.write(num_line, 10, y1_line)
-                # sheet.write(num_line, 11, x2_line)
-                # sheet.write(num_line, 12, y2_line)
-
+    print(num_line)
     print(num_hor, num_ver)
     print(len(data_hor), len(data_ver))
+    # 反推
     for values_hor in data_hor:
         w1_b, h1_b = points_rotate(-angle_set, values_hor[1], values_hor[0])
         w2_b, h2_b = points_rotate(-angle_set, values_hor[2], values_hor[0])
@@ -375,13 +384,13 @@ try:
         cv2.line(rgb_type_imu, (x1_b, y1_b), (x2_b, y2_b), (255, 0, 0), 1)
         x_mid = int((x1_b + x2_b) / 2)
         y_mid = int((y1_b + y2_b) / 2)
-        cv2.putText(rgb_type_imu, str(round(values_hor[0], 0)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
+        cv2.putText(rgb_type_imu, str(round(values_hor[0], 0)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
 
         # x_plt = np.array([values_hor[1], values_hor[2]])
         # y_plt = np.array([values_hor[0], values_hor[0]])
-        # x_plt = np.array([w1_b, w2_b])
-        # y_plt = np.array([h1_b, h2_b])
-        # plt.plot(x_plt, y_plt, 'b')
+        x_plt = np.array([w1_b, w2_b])
+        y_plt = np.array([h1_b, h2_b])
+        plt.plot(x_plt, y_plt, 'b')
     for values_ver in data_ver:
         w1_b, h1_b = points_rotate(-angle_set, values_ver[0], values_ver[1])
         w2_b, h2_b = points_rotate(-angle_set, values_ver[0], values_ver[2])
@@ -392,22 +401,18 @@ try:
         cv2.line(rgb_type_imu, (x1_b, y1_b), (x2_b, y2_b), (255, 0, 0), 1)
         x_mid = int((x1_b + x2_b) / 2)
         y_mid = int((y1_b + y2_b) / 2)
-        cv2.putText(rgb_type_imu, str(round(values_ver[0], 0)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX, 0.4,
+        cv2.putText(rgb_type_imu, str(round(values_ver[0], 0)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                     (255, 0, 0), 1)
 
         # x_plt = np.array([values_ver[0], values_ver[0]])
         # y_plt = np.array([values_ver[1], values_ver[2]])
-        # x_plt = np.array([w1_b, w2_b])
-        # y_plt = np.array([h1_b, h2_b])
-        # plt.plot(x_plt, y_plt, 'b')
-
+        x_plt = np.array([w1_b, w2_b])
+        y_plt = np.array([h1_b, h2_b])
+        plt.plot(x_plt, y_plt, 'b')
+    end_time = time.time()
+    time_mess += 'Rotate:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
 except Exception as e:
     print(e)
-# xls.save('./TestData/Axis-30d00.xls')  # 保存
-# print(num_line)
-
-end_time = time.time()
-time_mess += 'Hou:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
 
 start_time = time.time()
 # 画相机中心十字
@@ -420,17 +425,18 @@ cv2.circle(rgb_type_imu, (principal_x, principal_y), 5, (255, 255, 0), 3)
 
 rgb_half = np.zeros((mid_height, img_width, 3), np.uint8)  # 创建个全0的黑背景
 rgb_half_imu = np.zeros((mid_height, img_width, 3), np.uint8)  # 创建个全0的黑背景
-# rgb_half_line = np.zeros((mid_height, img_width, 3), np.uint8)  # 创建个全0的黑背景
 for i in range(0, mid_height, 1):
     for j in range(0, img_width, 1):
         rgb_half[i, j] = rgb_rot[(i + mid_height), j]
         rgb_half_imu[i, j] = rgb_type_imu[(i + mid_height), j]
-        # rgb_half_line[i, j] = rgb_type_line[(i + mid_height), j]
+end_time = time.time()
+time_mess += 'Show:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
 
 # 显示及保存图片
+print(time_mess)
+cv2.imshow('Cap', rgb_rot)
 # cv2.imshow('Cap', rgb_half)
-cv2.imshow('IMU', rgb_half_imu)
-# cv2.imshow('Line', rgb_half_line)
+# cv2.imshow('IMU', rgb_half_imu)
 plt.show()
 # cv2.imwrite(file_address + 'C' + str(cap_id) + '-' + str_Time + '.jpg', rgb_frame)
 # cv2.imwrite(file_address + 'D' + str(cap_id) + '-' + str_Time + '.jpg', frame_distance)

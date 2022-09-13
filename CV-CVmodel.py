@@ -60,7 +60,7 @@ def get_parameter(gra_edge):
     ver_lines_angle = []
     ver_lines_org = []
     num_hor = 0
-    lines = cv2.HoughLinesP(gra_edge, rho=1.0, theta=np.pi / 180, threshold=20, minLineLength=20, maxLineGap=20)
+    lines = cv2.HoughLinesP(gra_edge, rho=1.0, theta=np.pi / 180, threshold=20, minLineLength=20, maxLineGap=5)
     for line in lines:
         for x1_p, y1_p, x2_p, y2_p in line:
             if getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 50.0:
@@ -164,7 +164,7 @@ def get_parameter(gra_edge):
 # 开始主程序
 # 提取图像
 
-file_name = 'Cali-120-720'
+file_name = 'Cali-171116'
 rgb_frame = cv2.imread('./TestData/' + file_name + '.jpg')
 # 获取图像位置参数
 img_test = rgb_frame.copy()
@@ -182,15 +182,12 @@ if img_height < 1080:
 if img_width < 1920:
     principal_x = int(principal_x * img_width / 1920)
 
-# 提取红色线
+# 提取红色线,手动去除校准用红色区域
 gra_red = get_red(img_test)
+gra_red[0:principal_y + 195, :] = 0
 
 # Canny提取边界
 gra_edge = cv2.Canny(gra_red, 70, 140)
-
-# 手动去除校准用红色区域
-gra_edge[0:principal_y, :] = 0
-# cv2.imshow('gra', gra_edge)
 
 # cv2.imwrite('./TestData/' + file_name + '-gra.jpg', gra_edge)
 # 计算参数，返回水平线高度，垂直线HoughLinesP结果，从右向左的第3和第2条线的a和b值
@@ -199,12 +196,17 @@ hor_lines_points, ver_lines, right_formular, left_formular = get_parameter(gra_e
 model_a = right_formular[0] - left_formular[0]
 model_b = right_formular[1] - left_formular[1]
 
+gra_all = np.zeros((img_height, img_width), np.uint8)
+
 # 画图像中心十字
 cv2.line(img_test, (mid_width, 0), (mid_width, img_height), (255, 0, 255), 1)
 cv2.line(img_test, (0, mid_height), (img_width, mid_height), (255, 0, 255), 1)
 # 画相机中心十字
 cv2.line(img_test, (principal_x, 0), (principal_x, img_height), (255, 255, 0), 1)
 cv2.line(img_test, (0, principal_y), (img_width, principal_y), (255, 255, 0), 1)
+# cv2.line(gra_all, (principal_x, 0), (principal_x, img_height), 255, 1)
+# cv2.line(gra_all, (0, principal_y), (img_width, principal_y), 255, 1)
+
 # 画标定垂线位置
 a_id_l = left_formular[0]
 b_id_l = left_formular[1]
@@ -212,6 +214,9 @@ a_id_r = right_formular[0]
 b_id_r = right_formular[1]
 cv2.line(img_test, (int(a_id_l * mid_height + b_id_l), mid_height), (int(a_id_l * img_height + b_id_l), img_height), (0, 255, 255), 1)
 cv2.line(img_test, (int(a_id_r * mid_height + b_id_r), mid_height), (int(a_id_r * img_height + b_id_r), img_height), (0, 255, 255), 1)
+cv2.line(gra_all, (int(a_id_l * mid_height + b_id_l), mid_height), (int(a_id_l * img_height + b_id_l), img_height), 255, 1)
+cv2.line(gra_all, (int(a_id_r * mid_height + b_id_r), mid_height), (int(a_id_r * img_height + b_id_r), img_height), 255, 1)
+
 
 # 计算水平线到相机的距离，并画出水平线
 for hor_point in hor_lines_points:
@@ -220,6 +225,9 @@ for hor_point in hor_lines_points:
     cv2.line(img_test, (0, hor_point[0]), (img_width, hor_point[0]), (255, 0, 0), 1)
     cv2.putText(img_test, str(dis_temp) + 'mm', (mid_width, hor_point[0]), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                 (255, 0, 0), 1)
+    cv2.line(gra_all, (0, hor_point[0]), (img_width, hor_point[0]), 255, 1)
+    cv2.putText(gra_all, str(int(dis_temp)), (mid_width, hor_point[0]), cv2.FONT_HERSHEY_SIMPLEX, 0.6, 255, 1)
+
     # print(hor_point[0], dis_temp)
 
 # 计算垂直线到图像中轴的距离，并画出垂直线
@@ -237,8 +245,21 @@ for ver_line in ver_lines:
                     (0, 255, 0), 1)
         cv2.putText(img_test, str(round(dis_ver_2, 0)), (x2, y2), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                     (0, 255, 0), 1)
+        cv2.line(gra_all, (x1, y1), (x2, y2), 255, 1)
+        cv2.putText(gra_all, str(int(abs(dis_ver_1))), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.6, 255, 1)
+        cv2.putText(gra_all, str(int(abs(dis_ver_2))), (x2, y2), cv2.FONT_HERSHEY_SIMPLEX, 0.6, 255, 1)
 
-cv2.imshow('test', img_test)
+gra_half = np.zeros((mid_height, img_width), np.uint8)  # 创建个全0的黑背景
+for i in range(0, mid_height, 1):
+    for j in range(0, img_width, 1):
+        if gra_all[(i + mid_height), j] > 125:
+            gra_half[i, j] = 0
+        else:
+            gra_half[i, j] = 255
+
+
+
+cv2.imshow('test', gra_half)
 print(model_a, model_b, principal_x, principal_y)
 # cv2.imwrite('./TestData/' + file_name + '-dis.jpg', img_test)
 
