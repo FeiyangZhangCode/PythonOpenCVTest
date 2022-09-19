@@ -5,7 +5,7 @@ import cv2
 import crcmod
 
 
-se = serial.Serial('/dev/ttyTHS1', 9600, timeout=0.4)
+se = serial.Serial('/dev/ttyTHS1', 9600, timeout=0.1)
 ultra_TH_F = 200  # 前向超声波阈值
 ultra_TH_B = 40  # 后向超声波阈值
 
@@ -42,7 +42,7 @@ def read_feedback(rec_mess):
     fall_BR = int(rec_mess[10:12])
     ultra_F = int(rec_mess[12:14], 16)
     ultra_B = int(rec_mess[14:16], 16)
-    if ((fall_FL + fall_FR + fall_BL + fall_BR) == 0) and (ultra_F > ultra_TH_F) and (ultra_B > ultra_TH_B):
+    if ((fall_FL + fall_FR + fall_BL + fall_BR) == 0) and (ultra_F < ultra_TH_F) and (ultra_B < ultra_TH_B):
         ret_state = 0
     elif ((fall_FL + fall_FR) > 0 and (fall_BL + fall_BR) == 0) or (
             ultra_F < ultra_TH_F and ultra_B > ultra_TH_B):  # 判断到上边
@@ -56,42 +56,12 @@ def read_feedback(rec_mess):
     return ret_state
 
 
-def single_action(hex_action):
-    sensor_state = 0  # 传感器状态，99是传感器异常，98是无反馈
-    for num_action in range(0, 10, 1):
-        loop_nofeedback = 0  # 累加无反馈次数
-        threshold_nofeedback = 10  # 累计无反馈上限值
-        se.write(hex_action)
-        data_1 = binascii.b2a_hex(hex_action)
-        print(data_1)
-        no_feedback = True
-        while no_feedback:
-            cv2.waitKey(100)
-            hex_rec = se.readline()
-            if hex_rec:
-                # 收到反馈，跳出反馈循环
-                no_feedback = False
-                str_rec = binascii.b2a_hex(hex_rec)
-                sensor_state = read_feedback(str_rec)
-                print(str_rec)
-                if sensor_state > 0:
-                    return sensor_state
-            else:
-                # 重新发送命令，并累计无反馈次数
-                se.write(hex_action)
-                loop_nofeedback += 1
-                if loop_nofeedback >= threshold_nofeedback:
-                    sensor_state = 98
-                    return sensor_state
-    return sensor_state
-
-
 # 根据动作组进行执行，list的0是动作的16进制命令，1是执行多少次
 def func_action(list_action):
     sensor_state = 0  # 传感器状态，99是传感器异常，98是无反馈
+    loop_nofeedback = 0  # 累加无反馈次数
+    threshold_nofeedback = 10  # 累计无反馈上限值
     for id_action in range(0, len(list_action), 1):
-        loop_nofeedback = 0  # 累加无反馈次数
-        threshold_nofeedback = 10  # 累计无反馈上限值
         hex_action = list_action[id_action][0]
         time_action = list_action[id_action][1]
         if time_action < 90:  # 有运行次数
@@ -149,13 +119,6 @@ def func_action(list_action):
 
 
 if __name__ == '__main__':
-    # 设置上下次数
-    loop_time = 2       # 上行+下行算作1次
-    # 设置平移方向及次数
-    move_side = 0       # 0不平移，1左移，2右移
-    move_times = 0      # 设置平移次数
-    move_num = 0        # 累计平移次数
-
     # 设置清洗速度
     int_washSpeed = 10
     cmd_2_washSpeed = hex(int_washSpeed)[2:]
@@ -237,24 +200,34 @@ if __name__ == '__main__':
                      [hex_moveBack, 10],        # 移动下行，10次，斜向移动挪向左
                      [hex_rotateLeft, 10],      # 左旋，10次，转回垂直状态
                      [hex_moveFront, 10]]       # 移动上行，10次，移回接近边沿
+
     # 动作组-上边向右
     list_Top2Right = [[hex_moveBack, 5],        # 移动下行，5次
                       [hex_rotateLeft, 10],     # 左旋，10次
                       [hex_moveBack, 10],       # 移动下行，10次
                       [hex_rotateRight, 10],    # 右旋，10次
                       [hex_moveFront, 10]]      # 移动上行，10次
+
     # 动作组-下边向左
     list_Button2Left = [[hex_moveFront, 5],
                         [hex_rotateLeft, 10],
                         [hex_moveFront, 10],
                         [hex_rotateRight, 10],
                         [hex_moveBack, 10]]
+
     # 动作组-下边向右
     list_Button2Right = [[hex_moveFront, 5],
                          [hex_rotateRight, 10],
                          [hex_moveFront, 10],
                          [hex_rotateLeft, 10],
                          [hex_moveBack, 10]]
+
+    # 上下次数设置
+    loop_time = 2       # 上行+下行算作1次
+    # 平移方向及次数设置
+    move_side = 0       # 0不平移，1左移，2右移
+    move_times = 0      # 设置平移次数
+    move_num = 0        # 累计平移次数
 
     # 测试通信
     in_init = True
@@ -267,64 +240,53 @@ if __name__ == '__main__':
         hex_init_rec = se.readline()
         if hex_init_rec:
             str_init_rec = binascii.b2a_hex(hex_init_rec)
-            # print(str_init_rec)
+            print(str_init_rec)
             get_state = read_feedback(str_init_rec)
             if get_state == 0:
-                # in_init = False
-                print('正常')
-                # break
+                in_init = False
+                break
             else:
-                # print('Error, State ID' + str(get_state))
-                str_fall_FL = str(int(str_init_rec[4:6]))
-                str_fall_FR = str(int(str_init_rec[6:8]))
-                str_fall_BL = str(int(str_init_rec[8:10]))
-                str_fall_BR = str(int(str_init_rec[10:12]))
-                str_ultra_F = str(int(str_init_rec[12:14], 16))
-                str_ultra_B = str(int(str_init_rec[14:16], 16))
-                print('防跌落', str_fall_FL, str_fall_FR, str_fall_BL, str_fall_BR)
-                print('前超声', str_ultra_F, '后超声', str_ultra_B)
-    # 单步执行，测试各个动作
-    get_err = single_action(hex_moveFront)
+                print('Error, State ID' + str(get_state))
 
     # 建立通信，开始执行
-    # for loop_num in range(0, loop_time, 1):
-    #     # 清洗上行
-    #     get_err_WF = func_action(list_washFront)
-    #     # 上行到边
-    #     get_err_EF = func_action(list_edgeFront)
-    #     # 到上边平移
-    #     if move_side == 0:  # 直行，不平移
-    #         pass
-    #     elif move_side == 1:  # 左移
-    #         get_err_T2L = func_action(list_Top2Left)
-    #         move_num += 1
-    #         if move_num >= move_times:
-    #             move_num = 0
-    #             move_side = 2
-    #     elif move_side == 2:  # 右移
-    #         get_err_T2R = func_action(list_Top2Right)
-    #         move_num += 1
-    #         if move_num >= move_times:
-    #             move_num = 0
-    #             move_side = 1
-    #     # 清洗下行
-    #     get_err_WB = func_action(list_washBack)
-    #     # 下行到边
-    #     get_err_EB = func_action(list_edgeBack)
-    #     # 到下边，如果不是最后一轮，则平移
-    #     if loop_num < (loop_time - 1):
-    #         if move_side == 0:  # 直行，不平移
-    #             pass
-    #         elif move_side == 1:  # 左移
-    #             get_err_B2L = func_action(list_Button2Left)
-    #             move_num += 1
-    #             if move_num >= move_times:
-    #                 move_num = 0
-    #                 move_side = 2
-    #         elif move_side == 2:  # 右移
-    #             get_err_B2R = func_action(list_Button2Right)
-    #             move_num += 1
-    #             if move_num >= move_times:
-    #                 move_num = 0
-    #                 move_side = 1
+    for loop_num in range(0, loop_time, 1):
+        # 清洗上行
+        get_err_WF = func_action(list_washFront)
+        # 上行到边
+        get_err_EF = func_action(list_edgeFront)
+        # 到上边平移
+        if move_side == 0:  # 直行，不平移
+            pass
+        elif move_side == 1:  # 左移
+            get_err_T2L = func_action(list_Top2Left)
+            move_num += 1
+            if move_num >= move_times:
+                move_num = 0
+                move_side = 2
+        elif move_side == 2:  # 右移
+            get_err_T2R = func_action(list_Top2Right)
+            move_num += 1
+            if move_num >= move_times:
+                move_num = 0
+                move_side = 1
+        # 清洗下行
+        get_err_WB = func_action(list_washBack)
+        # 下行到边
+        get_err_EB = func_action(list_edgeBack)
+        # 到下边，如果不是最后一轮，则平移
+        if loop_num < (loop_time - 1):
+            if move_side == 0:  # 直行，不平移
+                pass
+            elif move_side == 1:  # 左移
+                get_err_B2L = func_action(list_Button2Left)
+                move_num += 1
+                if move_num >= move_times:
+                    move_num = 0
+                    move_side = 2
+            elif move_side == 2:  # 右移
+                get_err_B2R = func_action(list_Button2Right)
+                move_num += 1
+                if move_num >= move_times:
+                    move_num = 0
+                    move_side = 1
 
