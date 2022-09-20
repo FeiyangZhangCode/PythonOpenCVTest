@@ -30,6 +30,6 @@ def txt2xls(filename, xlsname):
     print(num_line)
 
 
-filename = './TestData/MPU-y90.txt'
-xlsname = './TestData/MPU-y90.xls'
+filename = './TestData/MPU-90.txt'
+xlsname = './TestData/MPU-90.xls'
 txt2xls(filename, xlsname)
