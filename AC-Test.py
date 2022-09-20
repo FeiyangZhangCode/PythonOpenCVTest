@@ -5,7 +5,7 @@ import cv2
 import crcmod
 
 
-se = serial.Serial('/dev/ttyTHS1', 9600, timeout=0.4)
+se = serial.Serial('/dev/ttyTHS1', 9600, timeout=0.1)
 ultra_TH_F = 200  # 前向超声波阈值
 ultra_TH_B = 40  # 后向超声波阈值
 
@@ -16,7 +16,6 @@ cmd_1_moveBack = '02'
 cmd_1_rotateLeft = '03'
 cmd_1_rotateRight = '04'
 cmd_2_speed0 = '00'
-cmd_2_speed10 = '0a'
 cmd_3_stop = '00'
 cmd_3_front = '01'
 cmd_3_back = '02'
@@ -34,7 +33,18 @@ def set_order(str_order):
     return hex_order
 
 
-# 读取主板的反馈信息
+# 速度改16进制
+def trans_speed(str_speed):
+    int_speed = int(str_speed)
+    cmd_speed = hex(int_speed)[2:]
+    if int_speed > 100:
+        cmd_speed = '64'
+    elif int_speed < 16:
+        cmd_speed = '0' + cmd_speed
+    return cmd_speed
+
+
+# 读取主板的反馈信息，返回判断后的状态
 def read_feedback(rec_mess):
     fall_FL = int(rec_mess[4:6])
     fall_FR = int(rec_mess[6:8])
@@ -56,9 +66,21 @@ def read_feedback(rec_mess):
     return ret_state
 
 
-def single_action(hex_action):
+# 读取主板的反馈信息，返回各个传感器数据
+def read_sensors(rec_mess):
+    fall_FL = str(int(rec_mess[4:6]))
+    fall_FR = str(int(rec_mess[6:8]))
+    fall_BL = str(int(rec_mess[8:10]))
+    fall_BR = str(int(rec_mess[10:12]))
+    ultra_F = str(int(rec_mess[12:14], 16))
+    ultra_B = str(int(rec_mess[14:16], 16))
+
+    return fall_FL, fall_FR, fall_BL, fall_BR, ultra_F, ultra_B
+
+
+def single_action(hex_action, single_time):
     sensor_state = 0  # 传感器状态，99是传感器异常，98是无反馈
-    for num_action in range(0, 10, 1):
+    for single_num in range(0, single_time, 1):
         loop_nofeedback = 0  # 累加无反馈次数
         threshold_nofeedback = 10  # 累计无反馈上限值
         se.write(hex_action)
@@ -72,10 +94,10 @@ def single_action(hex_action):
                 # 收到反馈，跳出反馈循环
                 no_feedback = False
                 str_rec = binascii.b2a_hex(hex_rec)
-                sensor_state = read_feedback(str_rec)
-                print(str_rec)
-                if sensor_state > 0:
-                    return sensor_state
+                sig_fall_FL, sig_fall_FR, sig_fall_BL, sig_fall_BR, sig_ultra_F, sig_ultra_B = read_sensors(
+                    str_rec)
+                print('防跌落', sig_fall_FL, sig_fall_FR, sig_fall_BL, sig_fall_BR)
+                print('前超声', sig_ultra_F, '后超声', sig_ultra_B)
             else:
                 # 重新发送命令，并累计无反馈次数
                 se.write(hex_action)
@@ -157,28 +179,11 @@ if __name__ == '__main__':
     move_num = 0        # 累计平移次数
 
     # 设置清洗速度
-    int_washSpeed = 10
-    cmd_2_washSpeed = hex(int_washSpeed)[2:]
-    if int_washSpeed > 100:
-        cmd_2_washSpeed = '64'
-    elif int_washSpeed < 16:
-        cmd_2_washSpeed = '0' + cmd_2_washSpeed
-
+    cmd_2_washSpeed = trans_speed('10')
     # 设置移动速度
-    int_moveSpeed = 20
-    cmd_2_moveSpeed = hex(int_moveSpeed)[2:]
-    if int_moveSpeed > 100:
-        cmd_2_moveSpeed = '64'
-    elif int_moveSpeed < 16:
-        cmd_2_moveSpeed = '0' + cmd_2_moveSpeed
-
+    cmd_2_moveSpeed = trans_speed('20')
     # 设置旋转速度
-    int_rotatePalstance = 10
-    cmd_2_rotatePalstance = hex(int_rotatePalstance)[2:]
-    if int_rotatePalstance > 100:
-        cmd_2_rotatePalstance = '64'
-    elif int_rotatePalstance < 16:
-        cmd_2_rotatePalstance = '0' + cmd_2_rotatePalstance
+    cmd_2_rotatePalstance = trans_speed('10')
 
     # 刮板向上
     hex_boardFront = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_front + cmd_4_stop)
@@ -267,24 +272,85 @@ if __name__ == '__main__':
         hex_init_rec = se.readline()
         if hex_init_rec:
             str_init_rec = binascii.b2a_hex(hex_init_rec)
-            # print(str_init_rec)
+            str_fall_FL, str_fall_FR, str_fall_BL, str_fall_BR, str_ultra_F, str_ultra_B = read_sensors(str_init_rec)
+            print('防跌落', str_fall_FL, str_fall_FR, str_fall_BL, str_fall_BR)
+            print('前超声', str_ultra_F, '后超声', str_ultra_B)
             get_state = read_feedback(str_init_rec)
-            if get_state == 0:
-                # in_init = False
-                print('正常')
-                # break
-            else:
-                # print('Error, State ID' + str(get_state))
-                str_fall_FL = str(int(str_init_rec[4:6]))
-                str_fall_FR = str(int(str_init_rec[6:8]))
-                str_fall_BL = str(int(str_init_rec[8:10]))
-                str_fall_BR = str(int(str_init_rec[10:12]))
-                str_ultra_F = str(int(str_init_rec[12:14], 16))
-                str_ultra_B = str(int(str_init_rec[14:16], 16))
-                print('防跌落', str_fall_FL, str_fall_FR, str_fall_BL, str_fall_BR)
-                print('前超声', str_ultra_F, '后超声', str_ultra_B)
+            in_init = False
+            print('通信正常')
+
     # 单步执行，测试各个动作
-    get_err = single_action(hex_moveFront)
+    temp_c1 = cmd_1_stop
+    temp_c2 = cmd_2_speed0
+    temp_c3 = cmd_3_stop
+    temp_c4 = cmd_4_stop
+    is_SingleLoop = True
+    while is_SingleLoop:
+        # 输入单步命令
+        kb_action = input('输入动作')
+        # kb_time = int(input('输入次数'))
+        kb_time = 5
+        if kb_action == 'w' or '8':                            # 向前移动，刮板和水系统不变
+            kb_speed = input('输入速度')
+            cmd_2_inputSpeed = trans_speed(kb_speed)
+            temp_c1 = cmd_1_moveFront
+            temp_c2 = cmd_2_inputSpeed
+        elif kb_action == 's' or '2':                          # 向后移动，刮板和水系统不变
+            kb_speed = input('输入速度')
+            cmd_2_inputSpeed = trans_speed(kb_speed)
+            temp_c1 = cmd_1_moveBack
+            temp_c2 = cmd_2_inputSpeed
+        elif kb_action == 'a' or '4':                          # 向左旋转，刮板和水系统不变
+            kb_speed = input('输入速度')
+            cmd_2_inputSpeed = trans_speed(kb_speed)
+            temp_c1 = cmd_1_rotateLeft
+            temp_c2 = cmd_2_inputSpeed
+        elif kb_action == 'd' or '6':                          # 向右旋转，刮板和水系统不变
+            kb_speed = input('输入速度')
+            cmd_2_inputSpeed = trans_speed(kb_speed)
+            temp_c1 = cmd_1_rotateLeft
+            temp_c2 = cmd_2_inputSpeed
+        elif kb_action == 'z' or '5':                          # 抬起刮板，停止移动，水系统不变
+            temp_c1 = cmd_1_stop
+            temp_c2 = cmd_2_speed0
+            temp_c3 = cmd_3_stop
+        elif kb_action == 'x' or '1':                          # 刮板向前，停止移动，水系统不变
+            temp_c1 = cmd_1_stop
+            temp_c2 = cmd_2_speed0
+            temp_c3 = cmd_3_front
+        elif kb_action == 'c' or '3':                          # 刮板向后，停止移动，水系统不变
+            temp_c1 = cmd_1_stop
+            temp_c2 = cmd_2_speed0
+            temp_c3 = cmd_3_back
+        elif kb_action == 'e' or '7':                          # 关闭水系统，停止移动，刮板不变
+            temp_c1 = cmd_1_stop
+            temp_c2 = cmd_2_speed0
+            temp_c4 = cmd_4_stop
+        elif kb_action == 'r' or '9':                          # 启动水系统，停止移动，刮板不变
+            temp_c1 = cmd_1_stop
+            temp_c2 = cmd_2_speed0
+            temp_c4 = cmd_4_start
+        elif kb_action == 'q':                          # 结束运行，全部停止
+            print('结束运行')
+            is_SingleLoop = False
+            temp_c1 = cmd_1_stop
+            temp_c2 = cmd_2_speed0
+            temp_c3 = cmd_3_stop
+            temp_c4 = cmd_4_stop
+        else:                                           # 输入错误，停止移动，刮板和水系统不变
+            print('输入错误')
+            temp_c1 = cmd_1_stop
+            temp_c2 = cmd_2_speed0
+        # 发送单步命令
+        hex_temp_order = set_order(cmd_0_head + temp_c1 + temp_c2 + temp_c3 + temp_c4)
+        get_single_err = single_action(hex_temp_order, kb_time)
+        # 执行单步后移动停止
+        hex_temp_stop = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + temp_c3 + temp_c4)
+        get_stop_err = single_action(hex_temp_order, 1)
+        # 无反馈退出
+        if get_single_err == 98 or get_stop_err == 98:
+            print('无反馈，结束运行')
+            is_SingleLoop = False
 
     # 建立通信，开始执行
     # for loop_num in range(0, loop_time, 1):
