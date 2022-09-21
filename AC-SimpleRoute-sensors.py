@@ -3,8 +3,13 @@ import serial
 import time
 import cv2
 import crcmod
+import datetime
+import multiprocessing as mp
+import os
+import INA219
+import MPU6050
 
-se = serial.Serial('/dev/ttyTHS1', 115200, timeout=0.1)
+se = serial.Serial('/dev/ttyTHS1', 9600, timeout=0.1)
 ultra_TH_F = 200  # 前向超声波阈值
 ultra_TH_B = 40  # 后向超声波阈值
 
@@ -103,9 +108,9 @@ def single_action(hex_action, single_time):
 # 根据动作组进行执行，list的0是动作的16进制命令，1是执行多少次
 def func_action(list_action):
     sensor_state = 0  # 传感器状态，99是传感器异常，98是无反馈
+    loop_nofeedback = 0  # 累加无反馈次数
+    threshold_nofeedback = 10  # 累计无反馈上限值
     for id_action in range(0, len(list_action), 1):
-        loop_nofeedback = 0  # 累加无反馈次数
-        threshold_nofeedback = 10  # 累计无反馈上限值
         hex_action = list_action[id_action][0]
         time_action = list_action[id_action][1]
         if time_action < 90:  # 有运行次数
@@ -162,13 +167,57 @@ def func_action(list_action):
     return sensor_state, 0
 
 
-if __name__ == '__main__':
+# 串口读取超声数据
+def ultra_get(q_u0, q_u1, lock_ser, file_address):
+    global se
+    while True:
+        try:
+            se.write('1'.encode())
+            time.sleep(0.1)
+            line = se.readline()
+            lock_ser.acquire()
+            if line:
+                ultra_list = [0] * 2
+                file_serial = open(file_address + 'Serial.txt', 'a')
+                str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+                rec_hex = binascii.b2a_hex(line)
+                file_serial.write(str_time + str(rec_hex) + '\n')
+                file_serial.close()
+                if str(rec_hex[0:2].decode()) == 'ff':
+                    s1 = str(rec_hex[2:6].decode())
+                    s2 = str(rec_hex[6:10].decode())
+                    u0 = int(s1, 16)
+                    u1 = int(s2, 16)
+                    q_u0.put(u0)
+                    q_u1.put(u1)
+                    q_u0.get() if q_u0.qsize() > 1 else time.sleep(0.005)
+                    q_u1.get() if q_u1.qsize() > 1 else time.sleep(0.005)
+        except Exception as e:
+            print(e)
+        lock_ser.release()
+
+
+# I2C读取IMU数据
+def imu_get(q_i, file_address):
+    while True:
+        cv2.waitKey(50)
+        temp_out, rot_x, rot_y, sav_mess = MPU6050.get_imu_data()
+        send_list = [round(temp_out, 2), round(rot_x, 2), round(rot_y, 2)]
+        file_rec = open(file_address + 'MPU.txt', 'a')
+        file_rec.write(sav_mess)
+        file_rec.close()
+        q_i.put(send_list)
+        q_i.get() if q_i.qsize() > 1 else time.sleep(0.005)
+
+
+# 执行自动控制
+def autocontrol_run(q_u0, q_u1, q_i, lock_ser, file_address):
     # 设置上下次数
-    loop_time = 2       # 上行+下行算作1次
+    loop_time = 2  # 上行+下行算作1次
     # 设置平移方向及次数
-    move_side = 0       # 0不平移，1左移，2右移
-    move_times = 0      # 设置平移次数
-    move_num = 0        # 累计平移次数
+    move_side = 0  # 0不平移，1左移，2右移
+    move_times = 0  # 设置平移次数
+    move_num = 0  # 累计平移次数
 
     # 设置清洗速度
     cmd_2_washSpeed = trans_speed('10')
@@ -229,17 +278,17 @@ if __name__ == '__main__':
     hex_moveFront = set_order(cmd_0_head + cmd_1_moveFront + cmd_2_moveSpeed + cmd_3_stop + cmd_4_stop)
 
     # 动作组-上边向左
-    list_Top2Left = [[hex_moveBack, 5],         # 移动下行，5次
-                     [hex_rotateRight, 10],     # 右旋，10次
-                     [hex_moveBack, 10],        # 移动下行，10次，斜向移动挪向左
-                     [hex_rotateLeft, 10],      # 左旋，10次，转回垂直状态
-                     [hex_moveFront, 10]]       # 移动上行，10次，移回接近边沿
+    list_Top2Left = [[hex_moveBack, 5],  # 移动下行，5次
+                     [hex_rotateRight, 10],  # 右旋，10次
+                     [hex_moveBack, 10],  # 移动下行，10次，斜向移动挪向左
+                     [hex_rotateLeft, 10],  # 左旋，10次，转回垂直状态
+                     [hex_moveFront, 10]]  # 移动上行，10次，移回接近边沿
     # 动作组-上边向右
-    list_Top2Right = [[hex_moveBack, 5],        # 移动下行，5次
-                      [hex_rotateLeft, 10],     # 左旋，10次
-                      [hex_moveBack, 10],       # 移动下行，10次
-                      [hex_rotateRight, 10],    # 右旋，10次
-                      [hex_moveFront, 10]]      # 移动上行，10次
+    list_Top2Right = [[hex_moveBack, 5],  # 移动下行，5次
+                      [hex_rotateLeft, 10],  # 左旋，10次
+                      [hex_moveBack, 10],  # 移动下行，10次
+                      [hex_rotateRight, 10],  # 右旋，10次
+                      [hex_moveFront, 10]]  # 移动上行，10次
     # 动作组-下边向左
     list_Button2Left = [[hex_moveFront, 5],
                         [hex_rotateLeft, 10],
@@ -257,176 +306,86 @@ if __name__ == '__main__':
     # 全停止
     hex_allStop = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_stop + cmd_4_stop)
 
-    # 测试通信
-    in_init = True
-    while in_init:
-        str_init = 'aa 01 00 00 00 00 a8'
-        hex_init_send = bytes.fromhex(str_init)
-        se.write(hex_init_send)
-        # print(str_init)
-        cv2.waitKey(100)
-        hex_init_rec = se.readline()
-        if hex_init_rec:
-            str_init_rec = binascii.b2a_hex(hex_init_rec)
-            if len(str_init_rec) >= 12:
-                if str_init_rec[0:4] == 'aa02':
-                    str_fall_FL, str_fall_FR, str_fall_BL, str_fall_BR = read_sensors(str_init_rec)
-                    print('防跌落', str_fall_FL, str_fall_FR, str_fall_BL, str_fall_BR)
+    while True:
+        # 测试通信
+        in_init = True
+        while in_init:
+            str_init = 'aa 01 00 00 00 00 a8'
+            hex_init_send = bytes.fromhex(str_init)
+            se.write(hex_init_send)
+            # print(str_init)
+            cv2.waitKey(100)
+            hex_init_rec = se.readline()
+            if hex_init_rec:
+                str_init_rec = binascii.b2a_hex(hex_init_rec)
+                get_state = read_feedback(str_init_rec)
+                if get_state == 0:
                     in_init = False
-                    print('通信正常')
+                    break
                 else:
-                    print('数据包头部异常')
-            else:
-                print('数据包长度异常')
-    print('进入动作测试')
-    # 单个动作测试
-    is_oneAction = True
-    while is_oneAction:
-        get_one_err = 0
-        get_stop_err = 0
-        # 输入单步命令
-        kb_action = input('输入动作')
-        if kb_action == 'w' or '8':  # 向前移动，刮板和水系统不变
-            get_one_err = single_action(hex_moveFront, 1)
-        elif kb_action == 's' or '2':  # 向后移动，刮板和水系统不变
-            get_one_err = single_action(hex_moveBack, 1)
-        elif kb_action == 'a' or '4':  # 向左旋转，刮板和水系统不变
-            get_one_err = single_action(hex_rotateLeft, 1)
-        elif kb_action == 'd' or '6':  # 向右旋转，刮板和水系统不变
-            get_one_err = single_action(hex_rotateRight, 1)
-        elif kb_action == 'z' or '5':  # 抬起刮板，停止移动，水系统停止
-            get_one_err = single_action(hex_boardStop, 1)
-        elif kb_action == 'x' or '1':  # 刮板向前，停止移动，水系统停止
-            get_one_err = single_action(hex_boardFront, 1)
-        elif kb_action == 'c' or '3':  # 刮板向后，停止移动，水系统停止
-            get_one_err = single_action(hex_boardBack, 1)
-        elif kb_action == 'e' or '7':  # 关闭水系统，停止移动，抬起刮板
-            get_one_err = single_action(hex_allStop, 1)
-        elif kb_action == 'r' or '9':  # 启动水系统，停止移动，抬起刮板
-            get_one_err = single_action(hex_sprayStart, 1)
-        elif kb_action == 'q':  # 结束运行，全部停止
-            print('结束运行')
-            get_stop_err = single_action(hex_allStop, 1)
-            is_oneAction = False
-        else:  # 输入错误，停止移动，刮板和水系统不变
-            print('输入错误')
-        # 无反馈退出
-        if get_one_err == 98 or get_stop_err == 98:
-            print('无反馈，结束运行')
-            is_oneAction = False
+                    sig_fall_FL, sig_fall_FR, sig_fall_BL, sig_fall_BR = read_sensors(str_init_rec)
+                    print('防跌落', sig_fall_FL, sig_fall_FR, sig_fall_BL, sig_fall_BR)
 
-    # 单步执行，测试各个动作
-    print('进入单步测试')
-    temp_c1 = cmd_1_stop
-    temp_c2 = cmd_2_speed0
-    temp_c3 = cmd_3_stop
-    temp_c4 = cmd_4_stop
-    is_SingleLoop = True
-    while is_SingleLoop:
-        # 输入单步命令
-        kb_action = input('输入动作')
-        kb_time = int(input('输入次数'))
-        # kb_time = 5
-        if kb_action == 'w' or '8':  # 向前移动，刮板和水系统不变
-            kb_speed = input('输入速度')
-            cmd_2_inputSpeed = trans_speed(kb_speed)
-            temp_c1 = cmd_1_moveFront
-            temp_c2 = cmd_2_inputSpeed
-        elif kb_action == 's' or '2':  # 向后移动，刮板和水系统不变
-            kb_speed = input('输入速度')
-            cmd_2_inputSpeed = trans_speed(kb_speed)
-            temp_c1 = cmd_1_moveBack
-            temp_c2 = cmd_2_inputSpeed
-        elif kb_action == 'a' or '4':  # 向左旋转，刮板和水系统不变
-            kb_speed = input('输入速度')
-            cmd_2_inputSpeed = trans_speed(kb_speed)
-            temp_c1 = cmd_1_rotateLeft
-            temp_c2 = cmd_2_inputSpeed
-        elif kb_action == 'd' or '6':  # 向右旋转，刮板和水系统不变
-            kb_speed = input('输入速度')
-            cmd_2_inputSpeed = trans_speed(kb_speed)
-            temp_c1 = cmd_1_rotateLeft
-            temp_c2 = cmd_2_inputSpeed
-        elif kb_action == 'z' or '5':  # 抬起刮板，停止移动，水系统不变
-            temp_c1 = cmd_1_stop
-            temp_c2 = cmd_2_speed0
-            temp_c3 = cmd_3_stop
-        elif kb_action == 'x' or '1':  # 刮板向前，停止移动，水系统不变
-            temp_c1 = cmd_1_stop
-            temp_c2 = cmd_2_speed0
-            temp_c3 = cmd_3_front
-        elif kb_action == 'c' or '3':  # 刮板向后，停止移动，水系统不变
-            temp_c1 = cmd_1_stop
-            temp_c2 = cmd_2_speed0
-            temp_c3 = cmd_3_back
-        elif kb_action == 'e' or '7':  # 关闭水系统，停止移动，刮板不变
-            temp_c1 = cmd_1_stop
-            temp_c2 = cmd_2_speed0
-            temp_c4 = cmd_4_stop
-        elif kb_action == 'r' or '9':  # 启动水系统，停止移动，刮板不变
-            temp_c1 = cmd_1_stop
-            temp_c2 = cmd_2_speed0
-            temp_c4 = cmd_4_start
-        elif kb_action == 'q':  # 结束运行，全部停止
-            print('结束运行')
-            is_SingleLoop = False
-            temp_c1 = cmd_1_stop
-            temp_c2 = cmd_2_speed0
-            temp_c3 = cmd_3_stop
-            temp_c4 = cmd_4_stop
-        else:  # 输入错误，停止移动，刮板和水系统不变
-            print('输入错误')
-            temp_c1 = cmd_1_stop
-            temp_c2 = cmd_2_speed0
-        # 发送单步命令
-        hex_temp_order = set_order(cmd_0_head + temp_c1 + temp_c2 + temp_c3 + temp_c4)
-        get_single_err = single_action(hex_temp_order, kb_time)
-        # 执行单步后移动停止
-        hex_temp_stop = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + temp_c3 + temp_c4)
-        get_stop_err = single_action(hex_temp_stop, 1)
-        # 无反馈退出
-        if get_single_err == 98 or get_stop_err == 98:
-            print('无反馈，结束运行')
-            is_SingleLoop = False
-    print('测试结束')
-    # 建立通信，开始执行
-    # for loop_num in range(0, loop_time, 1):
-    #     # 清洗上行
-    #     get_err_WF = func_action(list_washFront)
-    #     # 上行到边
-    #     get_err_EF = func_action(list_edgeFront)
-    #     # 到上边平移
-    #     if move_side == 0:  # 直行，不平移
-    #         pass
-    #     elif move_side == 1:  # 左移
-    #         get_err_T2L = func_action(list_Top2Left)
-    #         move_num += 1
-    #         if move_num >= move_times:
-    #             move_num = 0
-    #             move_side = 2
-    #     elif move_side == 2:  # 右移
-    #         get_err_T2R = func_action(list_Top2Right)
-    #         move_num += 1
-    #         if move_num >= move_times:
-    #             move_num = 0
-    #             move_side = 1
-    #     # 清洗下行
-    #     get_err_WB = func_action(list_washBack)
-    #     # 下行到边
-    #     get_err_EB = func_action(list_edgeBack)
-    #     # 到下边，如果不是最后一轮，则平移
-    #     if loop_num < (loop_time - 1):
-    #         if move_side == 0:  # 直行，不平移
-    #             pass
-    #         elif move_side == 1:  # 左移
-    #             get_err_B2L = func_action(list_Button2Left)
-    #             move_num += 1
-    #             if move_num >= move_times:
-    #                 move_num = 0
-    #                 move_side = 2
-    #         elif move_side == 2:  # 右移
-    #             get_err_B2R = func_action(list_Button2Right)
-    #             move_num += 1
-    #             if move_num >= move_times:
-    #                 move_num = 0
-    #                 move_side = 1
+        # 建立通信，开始执行
+        for loop_num in range(0, loop_time, 1):
+            # 清洗上行
+            get_err_WF = func_action(list_washFront)
+            # 上行到边
+            get_err_EF = func_action(list_edgeFront)
+            # 到上边平移
+            if move_side == 0:  # 直行，不平移
+                pass
+            elif move_side == 1:  # 左移
+                get_err_T2L = func_action(list_Top2Left)
+                move_num += 1
+                if move_num >= move_times:
+                    move_num = 0
+                    move_side = 2
+            elif move_side == 2:  # 右移
+                get_err_T2R = func_action(list_Top2Right)
+                move_num += 1
+                if move_num >= move_times:
+                    move_num = 0
+                    move_side = 1
+            # 清洗下行
+            get_err_WB = func_action(list_washBack)
+            # 下行到边
+            get_err_EB = func_action(list_edgeBack)
+            # 到下边，如果不是最后一轮，则平移
+            if loop_num < (loop_time - 1):
+                if move_side == 0:  # 直行，不平移
+                    pass
+                elif move_side == 1:  # 左移
+                    get_err_B2L = func_action(list_Button2Left)
+                    move_num += 1
+                    if move_num >= move_times:
+                        move_num = 0
+                        move_side = 2
+                elif move_side == 2:  # 右移
+                    get_err_B2R = func_action(list_Button2Right)
+                    move_num += 1
+                    if move_num >= move_times:
+                        move_num = 0
+                        move_side = 1
+
+
+if __name__ == '__main__':
+    # 新建文件夹,读取时间作为文件名
+    str_fileAddress = './TestData/'
+    str_Time = datetime.datetime.now().strftime('%Y%m%d-%H%M')
+    # file_rec = open(str_fileHome + str_Time + '.txt', 'w', encoding='utf-8')
+    str_fileAddress += str_Time
+    if not os.path.exists(str_fileAddress):
+        os.makedirs(str_fileAddress)
+    str_fileAddress += '/'
+
+    mp.set_start_method(method='spawn')  # init
+    processes = []
+    lock = mp.Lock()
+    queue_u0 = mp.Queue(maxsize=2)
+    queue_u1 = mp.Queue(maxsize=2)
+    queue_imu = mp.Queue(maxsize=2)
+
+    processes.append(mp.Process(target=ultra_get, args=(queue_u0, queue_u1, lock, str_fileAddress)))
+    processes.append(mp.Process(target=imu_get, args=(queue_imu, str_fileAddress)))
+    processes.append(mp.Process(target=autocontrol_run, args=(queue_u0, queue_u1, queue_imu, lock, str_fileAddress)))

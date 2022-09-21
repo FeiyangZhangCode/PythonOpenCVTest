@@ -16,7 +16,6 @@ cmd_1_moveBack = '02'
 cmd_1_rotateLeft = '03'
 cmd_1_rotateRight = '04'
 cmd_2_speed0 = '00'
-cmd_2_speed10 = '0a'
 cmd_3_stop = '00'
 cmd_3_front = '01'
 cmd_3_back = '02'
@@ -34,26 +33,72 @@ def set_order(str_order):
     return hex_order
 
 
-# 读取主板的反馈信息
+# 速度改16进制
+def trans_speed(str_speed):
+    int_speed = int(str_speed)
+    cmd_speed = hex(int_speed)[2:]
+    if int_speed > 100:
+        cmd_speed = '64'
+    elif int_speed < 16:
+        cmd_speed = '0' + cmd_speed
+    return cmd_speed
+
+
+# 读取主板的反馈信息，返回判断后的状态
 def read_feedback(rec_mess):
     fall_FL = int(rec_mess[4:6])
     fall_FR = int(rec_mess[6:8])
     fall_BL = int(rec_mess[8:10])
     fall_BR = int(rec_mess[10:12])
-    ultra_F = int(rec_mess[12:14], 16)
-    ultra_B = int(rec_mess[14:16], 16)
-    if ((fall_FL + fall_FR + fall_BL + fall_BR) == 0) and (ultra_F < ultra_TH_F) and (ultra_B < ultra_TH_B):
+    if (fall_FL + fall_FR + fall_BL + fall_BR) == 0:
         ret_state = 0
-    elif ((fall_FL + fall_FR) > 0 and (fall_BL + fall_BR) == 0) or (
-            ultra_F < ultra_TH_F and ultra_B > ultra_TH_B):  # 判断到上边
+    elif (fall_FL + fall_FR) > 0 and (fall_BL + fall_BR) == 0:  # 判断到上边
         ret_state = 1
-    elif ((fall_FL + fall_FR) == 0 and (fall_BL + fall_BR) > 0) or (
-            ultra_F > ultra_TH_F and ultra_B < ultra_TH_B):  # 判断到下边
+    elif (fall_FL + fall_FR) == 0 and (fall_BL + fall_BR) > 0:  # 判断到下边
         ret_state = 2
     else:  # 未知情况，
         ret_state = 99
 
     return ret_state
+
+
+# 读取主板的反馈信息，返回各个传感器数据
+def read_sensors(rec_mess):
+    fall_FL = str(int(rec_mess[4:6]))
+    fall_FR = str(int(rec_mess[6:8]))
+    fall_BL = str(int(rec_mess[8:10]))
+    fall_BR = str(int(rec_mess[10:12]))
+
+    return fall_FL, fall_FR, fall_BL, fall_BR
+
+
+def single_action(hex_action, single_time):
+    sensor_state = 0  # 传感器状态，99是传感器异常，98是无反馈
+    for single_num in range(0, single_time, 1):
+        loop_nofeedback = 0  # 累加无反馈次数
+        threshold_nofeedback = 10  # 累计无反馈上限值
+        se.write(hex_action)
+        data_1 = binascii.b2a_hex(hex_action)
+        print(data_1)
+        no_feedback = True
+        while no_feedback:
+            cv2.waitKey(100)
+            hex_rec = se.readline()
+            if hex_rec:
+                # 收到反馈，跳出反馈循环
+                no_feedback = False
+                str_rec = binascii.b2a_hex(hex_rec)
+                sig_fall_FL, sig_fall_FR, sig_fall_BL, sig_fall_BR = read_sensors(str_rec)
+                print('防跌落', sig_fall_FL, sig_fall_FR, sig_fall_BL, sig_fall_BR)
+            else:
+                # 重新发送命令，并累计无反馈次数
+                se.write(hex_action)
+                loop_nofeedback += 1
+                print('无反馈', loop_nofeedback)
+                if loop_nofeedback >= threshold_nofeedback:
+                    sensor_state = 98
+                    return sensor_state
+    return sensor_state
 
 
 # 根据动作组进行执行，list的0是动作的16进制命令，1是执行多少次
@@ -119,29 +164,19 @@ def func_action(list_action):
 
 
 if __name__ == '__main__':
+    # 设置上下次数
+    loop_time = 2       # 上行+下行算作1次
+    # 设置平移方向及次数
+    move_side = 0       # 0不平移，1左移，2右移
+    move_times = 0      # 设置平移次数
+    move_num = 0        # 累计平移次数
+
     # 设置清洗速度
-    int_washSpeed = 10
-    cmd_2_washSpeed = hex(int_washSpeed)[2:]
-    if int_washSpeed > 100:
-        cmd_2_washSpeed = '64'
-    elif int_washSpeed < 16:
-        cmd_2_washSpeed = '0' + cmd_2_washSpeed
-
+    cmd_2_washSpeed = trans_speed('10')
     # 设置移动速度
-    int_moveSpeed = 20
-    cmd_2_moveSpeed = hex(int_moveSpeed)[2:]
-    if int_moveSpeed > 100:
-        cmd_2_moveSpeed = '64'
-    elif int_moveSpeed < 16:
-        cmd_2_moveSpeed = '0' + cmd_2_moveSpeed
-
+    cmd_2_moveSpeed = trans_speed('20')
     # 设置旋转速度
-    int_rotatePalstance = 10
-    cmd_2_rotatePalstance = hex(int_rotatePalstance)[2:]
-    if int_rotatePalstance > 100:
-        cmd_2_rotatePalstance = '64'
-    elif int_rotatePalstance < 16:
-        cmd_2_rotatePalstance = '0' + cmd_2_rotatePalstance
+    cmd_2_rotatePalstance = trans_speed('10')
 
     # 刮板向上
     hex_boardFront = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_front + cmd_4_stop)
@@ -200,34 +235,28 @@ if __name__ == '__main__':
                      [hex_moveBack, 10],        # 移动下行，10次，斜向移动挪向左
                      [hex_rotateLeft, 10],      # 左旋，10次，转回垂直状态
                      [hex_moveFront, 10]]       # 移动上行，10次，移回接近边沿
-
     # 动作组-上边向右
     list_Top2Right = [[hex_moveBack, 5],        # 移动下行，5次
                       [hex_rotateLeft, 10],     # 左旋，10次
                       [hex_moveBack, 10],       # 移动下行，10次
                       [hex_rotateRight, 10],    # 右旋，10次
                       [hex_moveFront, 10]]      # 移动上行，10次
-
     # 动作组-下边向左
     list_Button2Left = [[hex_moveFront, 5],
                         [hex_rotateLeft, 10],
                         [hex_moveFront, 10],
                         [hex_rotateRight, 10],
                         [hex_moveBack, 10]]
-
     # 动作组-下边向右
     list_Button2Right = [[hex_moveFront, 5],
                          [hex_rotateRight, 10],
                          [hex_moveFront, 10],
                          [hex_rotateLeft, 10],
                          [hex_moveBack, 10]]
-
-    # 上下次数设置
-    loop_time = 2       # 上行+下行算作1次
-    # 平移方向及次数设置
-    move_side = 0       # 0不平移，1左移，2右移
-    move_times = 0      # 设置平移次数
-    move_num = 0        # 累计平移次数
+    # 启动水系统
+    hex_sprayStart = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_stop + cmd_4_start)
+    # 全停止
+    hex_allStop = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_stop + cmd_4_stop)
 
     # 测试通信
     in_init = True
@@ -240,13 +269,13 @@ if __name__ == '__main__':
         hex_init_rec = se.readline()
         if hex_init_rec:
             str_init_rec = binascii.b2a_hex(hex_init_rec)
-            print(str_init_rec)
             get_state = read_feedback(str_init_rec)
             if get_state == 0:
                 in_init = False
                 break
             else:
-                print('Error, State ID' + str(get_state))
+                sig_fall_FL, sig_fall_FR, sig_fall_BL, sig_fall_BR = read_sensors(str_init_rec)
+                print('防跌落', sig_fall_FL, sig_fall_FR, sig_fall_BL, sig_fall_BR)
 
     # 建立通信，开始执行
     for loop_num in range(0, loop_time, 1):
