@@ -3,7 +3,7 @@ import serial
 import time
 
 def serial_rw():
-    se = serial.Serial('/dev/ttyTHS1', 9600, timeout=0.5)
+    se = serial.Serial('/dev/ttyTHS1', 115200, timeout=0.5)
 
     loop_num = 0
     while True:

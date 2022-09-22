@@ -1,0 +1,46 @@
+import serial
+import serial.tools.list_ports
+import re
+import time
+import binascii
+import datetime
+
+COM_NAME = 'CH341'
+BAUD_RATE = 115200
+
+
+def get_ports():
+    comList = list(serial.tools.list_ports.comports())
+    i = 0
+    while i < len(comList):
+        tmp_com = list(comList[i])
+        str_com = str(tmp_com)
+        r = re.search(COM_NAME, str_com)
+        if r != None:
+            port_num = tmp_com[0]
+        i = i + 1
+    return port_num
+
+
+if __name__ == '__main__':
+    # ser = serial.Serial(get_ports(), BAUD_RATE, timeout=0.5)
+    ser = serial.Serial('COM8', 115200, timeout=0.1)
+    print('Start Read')
+    get_num = 0
+    while True:
+        time.sleep(0.1)
+        line = ser.readline()
+        if line:
+            str_send = 'aa 02 00 00 00 00 a8'
+            hex_send = bytes.fromhex(str_send)
+            ser.write(hex_send)
+            str_rec = binascii.b2a_hex(line)
+            print(str_rec)
+            get_num += 1
+            str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+            print(str_Time)
+
+    # success_bytes = ser.write(b"This is data for test")
+    # print("发送数据长度:", success_bytes)  # 发送数据长度
+    # recv_data = ser.readline()
+    # print("接收到的数据是：", recv_data.decode())

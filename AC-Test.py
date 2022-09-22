@@ -3,6 +3,7 @@ import serial
 import time
 import cv2
 import crcmod
+import keyboard
 
 se = serial.Serial('/dev/ttyTHS1', 115200, timeout=0.1)
 ultra_TH_F = 200  # 前向超声波阈值
@@ -257,176 +258,141 @@ if __name__ == '__main__':
     # 全停止
     hex_allStop = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_stop + cmd_4_stop)
 
-    # 测试通信
-    in_init = True
-    while in_init:
-        str_init = 'aa 01 00 00 00 00 a8'
-        hex_init_send = bytes.fromhex(str_init)
-        se.write(hex_init_send)
-        # print(str_init)
-        cv2.waitKey(100)
-        hex_init_rec = se.readline()
-        if hex_init_rec:
-            str_init_rec = binascii.b2a_hex(hex_init_rec)
-            if len(str_init_rec) >= 12:
-                if str_init_rec[0:4] == 'aa02':
-                    str_fall_FL, str_fall_FR, str_fall_BL, str_fall_BR = read_sensors(str_init_rec)
-                    print('防跌落', str_fall_FL, str_fall_FR, str_fall_BL, str_fall_BR)
-                    in_init = False
-                    print('通信正常')
+    # 无反馈重新循环标志位
+    no_feedBack = False
+    while True:
+        # 测试通信
+        in_init = True
+        while in_init:
+            str_init = 'aa 01 00 00 00 00 a8'
+            hex_init_send = bytes.fromhex(str_init)
+            se.write(hex_init_send)
+            # print(str_init)
+            cv2.waitKey(100)
+            hex_init_rec = se.readline()
+            if hex_init_rec:
+                str_init_rec = binascii.b2a_hex(hex_init_rec)
+                if len(str_init_rec) >= 12:
+                    if str_init_rec[0:4] == 'aa02':
+                        str_fall_FL, str_fall_FR, str_fall_BL, str_fall_BR = read_sensors(str_init_rec)
+                        print('防跌落', str_fall_FL, str_fall_FR, str_fall_BL, str_fall_BR)
+                        in_init = False
+                        no_feedBack = False
+                        print('通信正常')
+                    else:
+                        print('数据包头部异常')
                 else:
-                    print('数据包头部异常')
-            else:
-                print('数据包长度异常')
-    print('进入动作测试')
-    # 单个动作测试
-    is_oneAction = True
-    while is_oneAction:
-        get_one_err = 0
-        get_stop_err = 0
-        # 输入单步命令
-        kb_action = input('输入动作')
-        if kb_action == 'w' or '8':  # 向前移动，刮板和水系统不变
-            get_one_err = single_action(hex_moveFront, 1)
-        elif kb_action == 's' or '2':  # 向后移动，刮板和水系统不变
-            get_one_err = single_action(hex_moveBack, 1)
-        elif kb_action == 'a' or '4':  # 向左旋转，刮板和水系统不变
-            get_one_err = single_action(hex_rotateLeft, 1)
-        elif kb_action == 'd' or '6':  # 向右旋转，刮板和水系统不变
-            get_one_err = single_action(hex_rotateRight, 1)
-        elif kb_action == 'z' or '5':  # 抬起刮板，停止移动，水系统停止
-            get_one_err = single_action(hex_boardStop, 1)
-        elif kb_action == 'x' or '1':  # 刮板向前，停止移动，水系统停止
-            get_one_err = single_action(hex_boardFront, 1)
-        elif kb_action == 'c' or '3':  # 刮板向后，停止移动，水系统停止
-            get_one_err = single_action(hex_boardBack, 1)
-        elif kb_action == 'e' or '7':  # 关闭水系统，停止移动，抬起刮板
-            get_one_err = single_action(hex_allStop, 1)
-        elif kb_action == 'r' or '9':  # 启动水系统，停止移动，抬起刮板
-            get_one_err = single_action(hex_sprayStart, 1)
-        elif kb_action == 'q':  # 结束运行，全部停止
-            print('结束运行')
-            get_stop_err = single_action(hex_allStop, 1)
-            is_oneAction = False
-        else:  # 输入错误，停止移动，刮板和水系统不变
-            print('输入错误')
-        # 无反馈退出
-        if get_one_err == 98 or get_stop_err == 98:
-            print('无反馈，结束运行')
-            is_oneAction = False
+                    print('数据包长度异常')
+        print('进入动作测试')
+        # 单个动作测试
+        is_oneAction = True
+        while is_oneAction:
+            get_one_err = 0
+            get_stop_err = 0
+            # 输入单步命令
+            if keyboard.is_pressed('w') or keyboard.is_pressed('8'):  # 向前移动，刮板和水系统不变
+                get_one_err = single_action(hex_moveFront, 1)
+            elif keyboard.is_pressed('s') or keyboard.is_pressed('2'):  # 向后移动，刮板和水系统不变
+                get_one_err = single_action(hex_moveBack, 1)
+            elif keyboard.is_pressed('a') or keyboard.is_pressed('4'):  # 向左旋转，刮板和水系统不变
+                get_one_err = single_action(hex_rotateLeft, 1)
+            elif keyboard.is_pressed('d') or keyboard.is_pressed('6'):  # 向右旋转，刮板和水系统不变
+                get_one_err = single_action(hex_rotateRight, 1)
+            elif keyboard.is_pressed('z') or keyboard.is_pressed('5'):  # 抬起刮板，停止移动，水系统停止
+                get_one_err = single_action(hex_boardStop, 1)
+            elif keyboard.is_pressed('x') or keyboard.is_pressed('1'):  # 刮板向前，停止移动，水系统停止
+                get_one_err = single_action(hex_boardFront, 1)
+            elif keyboard.is_pressed('c') or keyboard.is_pressed('3'):  # 刮板向后，停止移动，水系统停止
+                get_one_err = single_action(hex_boardBack, 1)
+            elif keyboard.is_pressed('e') or keyboard.is_pressed('7'):  # 关闭水系统，停止移动，抬起刮板
+                get_one_err = single_action(hex_allStop, 1)
+            elif keyboard.is_pressed('r') or keyboard.is_pressed('9'):  # 启动水系统，停止移动，抬起刮板
+                get_one_err = single_action(hex_sprayStart, 1)
+            elif keyboard.is_pressed('q'):  # 结束运行，全部停止
+                print('结束运行')
+                get_stop_err = single_action(hex_allStop, 1)
+                is_oneAction = False
+            else:  # 输入错误，停止移动，刮板和水系统不变
+                get_stop_err = single_action(hex_allStop, 1)
+            # 无反馈退出
+            if get_one_err == 98 or get_stop_err == 98:
+                print('无反馈，结束运行')
+                is_oneAction = False
+                no_feedBack = True
+        if no_feedBack:
+            continue
+        # # 单步执行，测试各个动作
+        # print('进入单步测试')
+        # temp_c1 = cmd_1_stop
+        # temp_c2 = cmd_2_speed0
+        # temp_c3 = cmd_3_stop
+        # temp_c4 = cmd_4_stop
+        # is_SingleLoop = True
+        # while is_SingleLoop:
+        #     # 输入单步命令
+        #     kb_action = input('输入动作')
+        #     kb_time = int(input('输入次数'))
+        #     # kb_time = 5
+        #     if kb_action == 'w' or '8':  # 向前移动，刮板和水系统不变
+        #         kb_speed = input('输入速度')
+        #         cmd_2_inputSpeed = trans_speed(kb_speed)
+        #         temp_c1 = cmd_1_moveFront
+        #         temp_c2 = cmd_2_inputSpeed
+        #     elif kb_action == 's' or '2':  # 向后移动，刮板和水系统不变
+        #         kb_speed = input('输入速度')
+        #         cmd_2_inputSpeed = trans_speed(kb_speed)
+        #         temp_c1 = cmd_1_moveBack
+        #         temp_c2 = cmd_2_inputSpeed
+        #     elif kb_action == 'a' or '4':  # 向左旋转，刮板和水系统不变
+        #         kb_speed = input('输入速度')
+        #         cmd_2_inputSpeed = trans_speed(kb_speed)
+        #         temp_c1 = cmd_1_rotateLeft
+        #         temp_c2 = cmd_2_inputSpeed
+        #     elif kb_action == 'd' or '6':  # 向右旋转，刮板和水系统不变
+        #         kb_speed = input('输入速度')
+        #         cmd_2_inputSpeed = trans_speed(kb_speed)
+        #         temp_c1 = cmd_1_rotateLeft
+        #         temp_c2 = cmd_2_inputSpeed
+        #     elif kb_action == 'z' or '5':  # 抬起刮板，停止移动，水系统不变
+        #         temp_c1 = cmd_1_stop
+        #         temp_c2 = cmd_2_speed0
+        #         temp_c3 = cmd_3_stop
+        #     elif kb_action == 'x' or '1':  # 刮板向前，停止移动，水系统不变
+        #         temp_c1 = cmd_1_stop
+        #         temp_c2 = cmd_2_speed0
+        #         temp_c3 = cmd_3_front
+        #     elif kb_action == 'c' or '3':  # 刮板向后，停止移动，水系统不变
+        #         temp_c1 = cmd_1_stop
+        #         temp_c2 = cmd_2_speed0
+        #         temp_c3 = cmd_3_back
+        #     elif kb_action == 'e' or '7':  # 关闭水系统，停止移动，刮板不变
+        #         temp_c1 = cmd_1_stop
+        #         temp_c2 = cmd_2_speed0
+        #         temp_c4 = cmd_4_stop
+        #     elif kb_action == 'r' or '9':  # 启动水系统，停止移动，刮板不变
+        #         temp_c1 = cmd_1_stop
+        #         temp_c2 = cmd_2_speed0
+        #         temp_c4 = cmd_4_start
+        #     elif kb_action == 'q':  # 结束运行，全部停止
+        #         print('结束运行')
+        #         is_SingleLoop = False
+        #         temp_c1 = cmd_1_stop
+        #         temp_c2 = cmd_2_speed0
+        #         temp_c3 = cmd_3_stop
+        #         temp_c4 = cmd_4_stop
+        #     else:  # 输入错误，停止移动，刮板和水系统不变
+        #         print('输入错误')
+        #         temp_c1 = cmd_1_stop
+        #         temp_c2 = cmd_2_speed0
+        #     # 发送单步命令
+        #     hex_temp_order = set_order(cmd_0_head + temp_c1 + temp_c2 + temp_c3 + temp_c4)
+        #     get_single_err = single_action(hex_temp_order, kb_time)
+        #     # 执行单步后移动停止
+        #     hex_temp_stop = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + temp_c3 + temp_c4)
+        #     get_stop_err = single_action(hex_temp_stop, 1)
+        #     # 无反馈退出
+        #     if get_single_err == 98 or get_stop_err == 98:
+        #         print('无反馈，结束运行')
+        #         is_SingleLoop = False
+        print('测试结束')
 
-    # 单步执行，测试各个动作
-    print('进入单步测试')
-    temp_c1 = cmd_1_stop
-    temp_c2 = cmd_2_speed0
-    temp_c3 = cmd_3_stop
-    temp_c4 = cmd_4_stop
-    is_SingleLoop = True
-    while is_SingleLoop:
-        # 输入单步命令
-        kb_action = input('输入动作')
-        kb_time = int(input('输入次数'))
-        # kb_time = 5
-        if kb_action == 'w' or '8':  # 向前移动，刮板和水系统不变
-            kb_speed = input('输入速度')
-            cmd_2_inputSpeed = trans_speed(kb_speed)
-            temp_c1 = cmd_1_moveFront
-            temp_c2 = cmd_2_inputSpeed
-        elif kb_action == 's' or '2':  # 向后移动，刮板和水系统不变
-            kb_speed = input('输入速度')
-            cmd_2_inputSpeed = trans_speed(kb_speed)
-            temp_c1 = cmd_1_moveBack
-            temp_c2 = cmd_2_inputSpeed
-        elif kb_action == 'a' or '4':  # 向左旋转，刮板和水系统不变
-            kb_speed = input('输入速度')
-            cmd_2_inputSpeed = trans_speed(kb_speed)
-            temp_c1 = cmd_1_rotateLeft
-            temp_c2 = cmd_2_inputSpeed
-        elif kb_action == 'd' or '6':  # 向右旋转，刮板和水系统不变
-            kb_speed = input('输入速度')
-            cmd_2_inputSpeed = trans_speed(kb_speed)
-            temp_c1 = cmd_1_rotateLeft
-            temp_c2 = cmd_2_inputSpeed
-        elif kb_action == 'z' or '5':  # 抬起刮板，停止移动，水系统不变
-            temp_c1 = cmd_1_stop
-            temp_c2 = cmd_2_speed0
-            temp_c3 = cmd_3_stop
-        elif kb_action == 'x' or '1':  # 刮板向前，停止移动，水系统不变
-            temp_c1 = cmd_1_stop
-            temp_c2 = cmd_2_speed0
-            temp_c3 = cmd_3_front
-        elif kb_action == 'c' or '3':  # 刮板向后，停止移动，水系统不变
-            temp_c1 = cmd_1_stop
-            temp_c2 = cmd_2_speed0
-            temp_c3 = cmd_3_back
-        elif kb_action == 'e' or '7':  # 关闭水系统，停止移动，刮板不变
-            temp_c1 = cmd_1_stop
-            temp_c2 = cmd_2_speed0
-            temp_c4 = cmd_4_stop
-        elif kb_action == 'r' or '9':  # 启动水系统，停止移动，刮板不变
-            temp_c1 = cmd_1_stop
-            temp_c2 = cmd_2_speed0
-            temp_c4 = cmd_4_start
-        elif kb_action == 'q':  # 结束运行，全部停止
-            print('结束运行')
-            is_SingleLoop = False
-            temp_c1 = cmd_1_stop
-            temp_c2 = cmd_2_speed0
-            temp_c3 = cmd_3_stop
-            temp_c4 = cmd_4_stop
-        else:  # 输入错误，停止移动，刮板和水系统不变
-            print('输入错误')
-            temp_c1 = cmd_1_stop
-            temp_c2 = cmd_2_speed0
-        # 发送单步命令
-        hex_temp_order = set_order(cmd_0_head + temp_c1 + temp_c2 + temp_c3 + temp_c4)
-        get_single_err = single_action(hex_temp_order, kb_time)
-        # 执行单步后移动停止
-        hex_temp_stop = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + temp_c3 + temp_c4)
-        get_stop_err = single_action(hex_temp_stop, 1)
-        # 无反馈退出
-        if get_single_err == 98 or get_stop_err == 98:
-            print('无反馈，结束运行')
-            is_SingleLoop = False
-    print('测试结束')
-    # 建立通信，开始执行
-    # for loop_num in range(0, loop_time, 1):
-    #     # 清洗上行
-    #     get_err_WF = func_action(list_washFront)
-    #     # 上行到边
-    #     get_err_EF = func_action(list_edgeFront)
-    #     # 到上边平移
-    #     if move_side == 0:  # 直行，不平移
-    #         pass
-    #     elif move_side == 1:  # 左移
-    #         get_err_T2L = func_action(list_Top2Left)
-    #         move_num += 1
-    #         if move_num >= move_times:
-    #             move_num = 0
-    #             move_side = 2
-    #     elif move_side == 2:  # 右移
-    #         get_err_T2R = func_action(list_Top2Right)
-    #         move_num += 1
-    #         if move_num >= move_times:
-    #             move_num = 0
-    #             move_side = 1
-    #     # 清洗下行
-    #     get_err_WB = func_action(list_washBack)
-    #     # 下行到边
-    #     get_err_EB = func_action(list_edgeBack)
-    #     # 到下边，如果不是最后一轮，则平移
-    #     if loop_num < (loop_time - 1):
-    #         if move_side == 0:  # 直行，不平移
-    #             pass
-    #         elif move_side == 1:  # 左移
-    #             get_err_B2L = func_action(list_Button2Left)
-    #             move_num += 1
-    #             if move_num >= move_times:
-    #                 move_num = 0
-    #                 move_side = 2
-    #         elif move_side == 2:  # 右移
-    #             get_err_B2R = func_action(list_Button2Right)
-    #             move_num += 1
-    #             if move_num >= move_times:
-    #                 move_num = 0
-    #                 move_side = 1
