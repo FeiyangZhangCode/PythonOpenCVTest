@@ -24,7 +24,7 @@ def get_ports():
 
 if __name__ == '__main__':
     # ser = serial.Serial(get_ports(), BAUD_RATE, timeout=0.5)
-    ser = serial.Serial('COM8', 115200, timeout=0.1)
+    ser = serial.Serial('COM6', 115200, timeout=0.1)
     print('Start Read')
     get_num = 0
     while True:
@@ -35,6 +35,7 @@ if __name__ == '__main__':
             hex_send = bytes.fromhex(str_send)
             ser.write(hex_send)
             str_rec = binascii.b2a_hex(line)
+            # if str_rec.decode('utf-8') != 'aa0100000000a8':
             print(str_rec)
             get_num += 1
             str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')

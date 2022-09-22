@@ -4,8 +4,9 @@ import time
 import cv2
 import crcmod
 import keyboard
+import datetime
 
-se = serial.Serial('/dev/ttyTHS1', 115200, timeout=0.1)
+se = serial.Serial('/dev/ttyTHS1', 115200, timeout=0.09)
 ultra_TH_F = 200  # 前向超声波阈值
 ultra_TH_B = 40  # 后向超声波阈值
 
@@ -82,7 +83,7 @@ def single_action(hex_action, single_time):
         print(data_1)
         no_feedback = True
         while no_feedback:
-            cv2.waitKey(100)
+            cv2.waitKey(40)
             hex_rec = se.readline()
             if hex_rec:
                 # 收到反馈，跳出反馈循环
@@ -253,10 +254,29 @@ if __name__ == '__main__':
                          [hex_moveFront, 10],
                          [hex_rotateLeft, 10],
                          [hex_moveBack, 10]]
+
     # 启动水系统
     hex_sprayStart = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_stop + cmd_4_start)
     # 全停止
     hex_allStop = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_stop + cmd_4_stop)
+
+    # 动作组-动作测试
+    list_ActionTest = [[hex_moveFront, 5],
+                       [hex_allStop, 2],
+                       [hex_moveBack, 5],
+                       [hex_allStop, 2],
+                       [hex_rotateLeft, 5],
+                       [hex_allStop, 2],
+                       [hex_rotateRight, 10],
+                       [hex_allStop, 2],
+                       [hex_rotateLeft, 5],
+                       [hex_allStop, 2],
+                       [hex_boardFront, 10],
+                       [hex_boardBack, 10],
+                       [hex_allStop, 10],
+                       [hex_sprayStart, 5],
+                       [hex_allStop, 2]]
+
 
     # 无反馈重新循环标志位
     no_feedBack = False
@@ -267,13 +287,15 @@ if __name__ == '__main__':
             str_init = 'aa 01 00 00 00 00 a8'
             hex_init_send = bytes.fromhex(str_init)
             se.write(hex_init_send)
-            # print(str_init)
-            cv2.waitKey(100)
+            str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+            print(str_Time)
+            print(str_init)
+            cv2.waitKey(40)
             hex_init_rec = se.readline()
             if hex_init_rec:
                 str_init_rec = binascii.b2a_hex(hex_init_rec)
                 if len(str_init_rec) >= 12:
-                    if str_init_rec[0:4] == 'aa02':
+                    if str_init_rec[0:4].decode('utf-8') == 'aa02':
                         str_fall_FL, str_fall_FR, str_fall_BL, str_fall_BR = read_sensors(str_init_rec)
                         print('防跌落', str_fall_FL, str_fall_FR, str_fall_BL, str_fall_BR)
                         in_init = False
@@ -287,32 +309,30 @@ if __name__ == '__main__':
         # 单个动作测试
         is_oneAction = True
         while is_oneAction:
+            str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+            print(str_Time)
             get_one_err = 0
             get_stop_err = 0
             # 输入单步命令
-            if keyboard.is_pressed('w') or keyboard.is_pressed('8'):  # 向前移动，刮板和水系统不变
+            if keyboard.is_pressed('w') or keyboard.is_pressed('8'):  # 向前移动，刮板和水系统停止
                 get_one_err = single_action(hex_moveFront, 1)
-            elif keyboard.is_pressed('s') or keyboard.is_pressed('2'):  # 向后移动，刮板和水系统不变
+            elif keyboard.is_pressed('s') or keyboard.is_pressed('2'):  # 向后移动，刮板和水系统停止
                 get_one_err = single_action(hex_moveBack, 1)
-            elif keyboard.is_pressed('a') or keyboard.is_pressed('4'):  # 向左旋转，刮板和水系统不变
+            elif keyboard.is_pressed('a') or keyboard.is_pressed('4'):  # 向左旋转，刮板和水系统停止
                 get_one_err = single_action(hex_rotateLeft, 1)
-            elif keyboard.is_pressed('d') or keyboard.is_pressed('6'):  # 向右旋转，刮板和水系统不变
+            elif keyboard.is_pressed('d') or keyboard.is_pressed('6'):  # 向右旋转，刮板和水系统停止
                 get_one_err = single_action(hex_rotateRight, 1)
-            elif keyboard.is_pressed('z') or keyboard.is_pressed('5'):  # 抬起刮板，停止移动，水系统停止
-                get_one_err = single_action(hex_boardStop, 1)
             elif keyboard.is_pressed('x') or keyboard.is_pressed('1'):  # 刮板向前，停止移动，水系统停止
                 get_one_err = single_action(hex_boardFront, 1)
             elif keyboard.is_pressed('c') or keyboard.is_pressed('3'):  # 刮板向后，停止移动，水系统停止
                 get_one_err = single_action(hex_boardBack, 1)
-            elif keyboard.is_pressed('e') or keyboard.is_pressed('7'):  # 关闭水系统，停止移动，抬起刮板
-                get_one_err = single_action(hex_allStop, 1)
-            elif keyboard.is_pressed('r') or keyboard.is_pressed('9'):  # 启动水系统，停止移动，抬起刮板
+            elif keyboard.is_pressed('z') or keyboard.is_pressed('5'):  # 启动水系统，停止移动，抬起刮板
                 get_one_err = single_action(hex_sprayStart, 1)
             elif keyboard.is_pressed('q'):  # 结束运行，全部停止
                 print('结束运行')
                 get_stop_err = single_action(hex_allStop, 1)
                 is_oneAction = False
-            else:  # 输入错误，停止移动，刮板和水系统不变
+            else:  # 无输入，停止移动，刮板和水系统停止
                 get_stop_err = single_action(hex_allStop, 1)
             # 无反馈退出
             if get_one_err == 98 or get_stop_err == 98:
@@ -321,8 +341,9 @@ if __name__ == '__main__':
                 no_feedBack = True
         if no_feedBack:
             continue
+        print('进入自动动作测试')
+        get_err_at = func_action(list_ActionTest)
         # # 单步执行，测试各个动作
-        # print('进入单步测试')
         # temp_c1 = cmd_1_stop
         # temp_c2 = cmd_2_speed0
         # temp_c3 = cmd_3_stop

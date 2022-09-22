@@ -1,12 +1,9 @@
 import binascii
-import serial
-import time
-import cv2
 import crcmod
 
 
 crc8 = crcmod.predefined.Crc('crc-8')
-hex_stop = bytes.fromhex('ff 0b 48 0b 05 ff ff ff ff')
+hex_stop = bytes.fromhex('aa0200000000')
 crc8.update(hex_stop)
 str_crc8 = hex(crc8.crcValue)[2:]
 hex_crc8 = bytes.fromhex(str_crc8)
