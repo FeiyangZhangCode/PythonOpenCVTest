@@ -10,26 +10,26 @@ def serial_rw():
     while True:
         loop_num += 1
         # se.write('1'.encode())
-        str_init = 'aa01040a000077'
+        str_init = 'aa0200000000a8'
         hex_init_send = bytes.fromhex(str_init)
         se.write(hex_init_send)
 
-        time.sleep(0.05)
-        hex_rec = se.readline()
-        if hex_rec:
-            data_1 = binascii.b2a_hex(hex_rec)
-            print(data_1)
+        time.sleep(0.2)
+        # hex_rec = se.readline()
+        # if hex_rec:
+        #     data_1 = binascii.b2a_hex(hex_rec)
+        #     print(data_1)
         print(loop_num)
 
 
 def auto_answer():
-    se = serial.Serial('/dev/ttyTHS1', 115200, timeout=0.15)
-    file_rec = open('/TestData/SerAutoAnswer.txt', 'a')
+    se = serial.Serial('/dev/ttyTHS1', 115200, timeout=0.2)
+    file_rec = open('./TestData/SerAutoAnswer.txt', 'a')
 
     print('Start Read')
     get_num = 0
     while True:
-        time.sleep(0.1)
+        # time.sleep(0.1)
         line = se.readline()
         if line:
             str_send = 'aa 02 00 00 00 00 a8'
@@ -40,9 +40,9 @@ def auto_answer():
             get_num += 1
             str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
             # print(str_Time)
-            file_rec.write(str_Time)
+            file_rec.write(str_Time + '\r\n')
             print(str_rec)
-            file_rec.write(str_rec.decode('utf-8'))
+            file_rec.write(str_rec.decode('utf-8') + '\r\n')
 
 
 
@@ -70,6 +70,6 @@ if __name__ == '__main__':
     print('Start')
     # serial_write()
     # serial_read()
-    # serial_rw()
-    auto_answer()
+    serial_rw()
+    # auto_answer()
     print('End')
