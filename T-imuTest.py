@@ -5,7 +5,6 @@ import datetime
 import openpyxl
 import cv2
 
-
 # 电源管理寄存器地址
 power_mgmt_1 = 0x6b
 power_mgmt_2 = 0x6c
@@ -13,6 +12,7 @@ bus = smbus.SMBus(0)  # or bus = smbus.SMBus(1) for Revision 2 boards
 address = 0x68  # This is the address value read via the i2cdetect command
 # Now wake the 6050 up as it starts in sleep mode
 bus.write_byte_data(address, power_mgmt_1, 0)
+
 
 def read_byte(adr):
     return bus.read_byte_data(address, adr)
@@ -98,27 +98,26 @@ def get_imu_data():
     # print("y rotation: ", rot_y)
 
     sav_mess = str_Time + ';'
-    sav_mess += 'tmp' + str(round(temp_out, 2)) + ';'
-    sav_mess += 'gxs' + str(round(gyro_xout_scaled, 4)) + ';'
-    sav_mess += 'gys' + str(round(gyro_yout_scaled, 4)) + ';'
-    sav_mess += 'gzs' + str(round(gyro_zout_scaled, 4)) + ';'
-    sav_mess += 'axs' + str(round(accel_xout_scaled, 4)) + ';'
-    sav_mess += 'ays' + str(round(accel_yout_scaled, 4)) + ';'
-    sav_mess += 'azs' + str(round(accel_zout_scaled, 4)) + ';'
-    sav_mess += 'xrt' + str(round(rot_x, 4)) + ';'
-    sav_mess += 'yrt' + str(round(rot_y, 4)) + ';\n'
+    sav_mess += str(round(temp_out, 2)) + ';'
+    sav_mess += str(round(gyro_xout_scaled, 4)) + ';'
+    sav_mess += str(round(gyro_yout_scaled, 4)) + ';'
+    sav_mess += str(round(gyro_zout_scaled, 4)) + ';'
+    sav_mess += str(round(accel_xout_scaled, 4)) + ';'
+    sav_mess += str(round(accel_yout_scaled, 4)) + ';'
+    sav_mess += str(round(accel_zout_scaled, 4)) + ';'
+    sav_mess += str(round(rot_x, 4)) + ';'
+    sav_mess += str(round(rot_y, 4)) + ';\n'
 
     # end_time = time.time()
     # print(str(round((end_time - start_time) * 1000, 4)) + 'ms')
     return temp_out, rot_x, rot_y, sav_mess
 
 
-
 if __name__ == '__main__':
     while True:
-        cv2.waitKey(100)
+        cv2.waitKey(50)
         flo_temp, flo_rX, flo_rY, get_mess = get_imu_data()
-        file_rec = open('./TestData/MPU-90.txt', 'a')
+        file_rec = open('./TestData/MPU-UpDownTest.txt', 'a')
         file_rec.write(get_mess)
         file_rec.close()
         print('T: ', str(round(flo_temp, 2)))

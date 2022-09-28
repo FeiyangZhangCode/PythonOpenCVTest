@@ -14,10 +14,11 @@ def txt2xls(filename, xlsname):
             break
         num_line += 1
         for value in line.split(';'):  # 读取出相应的内容写到x
-            if y == 0:
-                item = value
-            else:
-                item = value[3:]
+            item = value
+            # if y == 0:
+            #     item = value
+            # else:
+            #     item = value[3:]
     #         #            item=i.strip().decode('utf8')
     #         item = i.strip()
             sheet.write(x, y, item)
@@ -30,6 +31,6 @@ def txt2xls(filename, xlsname):
     print(num_line)
 
 
-filename = './TestData/MPU-90.txt'
-xlsname = './TestData/MPU-90.xls'
+filename = './TestData/MPU-20220927.txt'
+xlsname = './TestData/MPU-20220927.xls'
 txt2xls(filename, xlsname)

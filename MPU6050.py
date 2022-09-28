@@ -97,15 +97,15 @@ def get_imu_data():
     # print("y rotation: ", rot_y)
 
     sav_mess = str_Time + ';'
-    sav_mess += 'tmp' + str(round(temp_out, 2)) + ';'
-    sav_mess += 'gxs' + str(round(gyro_xout_scaled, 4)) + ';'
-    sav_mess += 'gys' + str(round(gyro_yout_scaled, 4)) + ';'
-    sav_mess += 'gzs' + str(round(gyro_zout_scaled, 4)) + ';'
-    sav_mess += 'axs' + str(round(accel_xout_scaled, 4)) + ';'
-    sav_mess += 'ays' + str(round(accel_yout_scaled, 4)) + ';'
-    sav_mess += 'azs' + str(round(accel_zout_scaled, 4)) + ';'
-    sav_mess += 'xrt' + str(round(rot_x, 4)) + ';'
-    sav_mess += 'yrt' + str(round(rot_y, 4)) + ';\n'
+    sav_mess += str(round(temp_out, 2)) + ';'
+    sav_mess += str(round(gyro_xout_scaled, 4)) + ';'
+    sav_mess += str(round(gyro_yout_scaled, 4)) + ';'
+    sav_mess += str(round(gyro_zout_scaled, 4)) + ';'
+    sav_mess += str(round(accel_xout_scaled, 4)) + ';'
+    sav_mess += str(round(accel_yout_scaled, 4)) + ';'
+    sav_mess += str(round(accel_zout_scaled, 4)) + ';'
+    sav_mess += str(round(rot_x, 4)) + ';'
+    sav_mess += str(round(rot_y, 4)) + ';\n'
 
     # end_time = time.time()
     # print(str(round((end_time - start_time) * 1000, 4)) + 'ms')
