@@ -118,6 +118,7 @@ def distance_get(q_c, q_s, q_u, q_i, lock_ser, cap_id, file_address):
     # 循环处理图像
     loop_num = 0
     imu_yaw = 0.0
+    imu_tmp = 0.0
     while True:
         loop_num += 1
         str_Time = datetime.datetime.now().strftime('%H%M%S-%f')
@@ -173,6 +174,7 @@ def distance_get(q_c, q_s, q_u, q_i, lock_ser, cap_id, file_address):
         if not q_i.empty():
             imu_list = q_i.get()
             imu_yaw = imu_list[2]
+            imu_tmp = imu_list[1]
         if len(lines) > 0:
             for line in lines:
                 for x1_p, y1_p, x2_p, y2_p in line:
@@ -344,7 +346,7 @@ def distance_get(q_c, q_s, q_u, q_i, lock_ser, cap_id, file_address):
                     if dis_temp_r > values_ver[0]:
                         dis_temp_r = values_ver[0]
         ret_value[0] = dis_temp_f
-        ret_value[1] = dis_temp_l
+        ret_value[1] = dis_temp_l * -1
         ret_value[2] = dis_temp_r
         end_time = time.time()
         time_mess += 'Draw:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
@@ -375,8 +377,8 @@ def distance_get(q_c, q_s, q_u, q_i, lock_ser, cap_id, file_address):
         file_rec = open(file_address + str(cap_id) + '.txt', 'a')
         file_rec.write(str_Time + '  ' + str(loop_num) + '\n')
         ret_mess += 'lines all:' + str(num_line) + ', hor:' + str(num_hor) + ', ver:' + str(num_ver) + '\n'
-        ret_mess += 'F:' + str(dis_temp_f) + ', L:' + str(dis_temp_l) + ', R:' + str(dis_temp_r) + ', U:' + ultra_value + '\n'
-        ret_mess += 'ver_yaw:' + angle_set + ', imu_yaw:' + imu_yaw + '\n'
+        ret_mess += 'F:' + str(dis_temp_f) + ', L:' + str(dis_temp_l) + ', R:' + str(dis_temp_r) + ', U:' + str(ultra_value) + '\n'
+        ret_mess += 'ver_yaw:' + str(angle_set) + ', imu_yaw:' + str(imu_yaw) + '\n'
         if len(ret_mess) > 0:
             file_rec.write('Data:\n' + ret_mess)
         if len(err_mess) > 0:
@@ -384,135 +386,17 @@ def distance_get(q_c, q_s, q_u, q_i, lock_ser, cap_id, file_address):
         if len(time_mess) > 0:
             file_rec.write('Timer:\n' + time_mess)
         file_rec.close()
+        if cap_id == 0:
+            print(str_Time, 'Front', str(round(ret_value[0], 0)), str(round(ret_value[1], 0)),
+                  str(round(ret_value[2], 0)), str(round(ret_value[3], 0)),
+                  str(round(angle_set, 2)), str(round(imu_yaw, 2)), str(round(imu_tmp, 2)))
+        else:
+            print(str_Time, 'Back', str(round(ret_value[0], 0)), str(round(ret_value[2], 0)),
+                  str(round(ret_value[1], 0)), str(round(ret_value[3], 0)),
+                  str(round(angle_set, 2)), str(round(imu_yaw, 2)), str(round(imu_tmp, 2)))
         q_s.put(ret_value)
         if q_s.qsize() > 1:
             q_s.get()
-
-
-# 读取UPS和Uart
-def uart_ups_get(q0, q1, qi, lock_ser, file_address):
-    global se
-    loop_num = 0
-    i_last = 0.0
-    file_rec = open(file_address + 'UPS.txt', 'a')
-    str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-    ina_mess, i_value = INA219.get_ina219_data()
-    i_last = i_value
-    file_rec.write(str_time + '   ' + str(loop_num) + '\n' + ina_mess)
-    file_rec.close()
-    front_value = 0
-    rear_value = 0
-    left_value = 0
-    right_value = 0
-    imu_temp = 0
-    imu_x = 0
-    imu_y = 0
-    while True:
-        loop_num += 1
-        start_time = time.time()
-        # 读取两个摄像头测距进程的数据
-        get_0 = False
-        get_1 = False
-        se_send = ''
-        rec_mess = ''
-        if not qi.empty():
-            imu_list = qi.get()
-            imu_temp = imu_list[0]
-            imu_x = imu_list[1]
-            imu_y = imu_list[2]
-
-        if not q0.empty() and not q1.empty():
-            get_0 = True
-            get_1 = True
-            t0_list = q0.get()
-            t1_list = q1.get()
-            front_0 = t0_list[0]
-            left_0 = t0_list[1]
-            right_0 = t0_list[2]
-            ultra_0 = t0_list[3]
-            front_1 = t1_list[0]
-            left_1 = t1_list[1]
-            right_1 = t1_list[2]
-            ultra_1 = t1_list[3]
-            front_value = min(front_0, ultra_0)
-            rear_value = min(front_1, ultra_1)
-            left_value = min(left_0, right_1)
-            right_value = min(right_0, left_1)
-            se_send = '2 ' + 'F' + str(front_value) + 'B' + str(rear_value) + 'L' + str(left_value) + 'R' + str(
-                right_value) + 'X' + str(imu_x) + 'Y' + str(imu_y)
-            rec_mess = '0;' + str(front_0) + ';' + str(left_0) + ';' + str(right_0) + ';' + str(ultra_0) + ';' + str(imu_temp) + ';' + str(imu_x) + ';' + str(imu_y) + ';\n'
-            rec_mess += '1;' + str(front_1) + ';' + str(left_1) + ';' + str(right_1) + ';' + str(ultra_1) + ';' + str(imu_temp) + ';' + str(imu_x) + ';' + str(imu_y) + ';\n'
-
-        elif not q0.empty() and q1.empty():
-            get_0 = True
-            get_1 = False
-            temp_list = q0.get()
-            front_0 = temp_list[0]
-            left_0 = temp_list[1]
-            right_0 = temp_list[2]
-            ultra_0 = temp_list[3]
-            front_value = min(front_0, ultra_0)
-            left_value = left_0
-            right_value = right_0
-            se_send = '0 ' + 'F' + str(front_value) + 'B' + str(rear_value) + 'L' + str(left_value) + 'R' + str(
-                right_value) + 'X' + str(imu_x) + 'Y' + str(imu_y)
-            rec_mess = '0;' + str(front_0) + ';' + str(left_0) + ';' + str(right_0) + ';' + str(ultra_0) + ';' + str(imu_temp) + ';' + str(imu_x) + ';' + str(imu_y) + ';\n'
-        elif q0.empty() and not q1.empty():
-            get_0 = False
-            get_1 = True
-            temp_list = q1.get()
-            front_1 = temp_list[0]
-            left_1 = temp_list[1]
-            right_1 = temp_list[2]
-            ultra_1 = temp_list[3]
-            rear_value = min(front_1, ultra_1)
-            left_value = right_1
-            right_value = left_1
-            se_send = '1 ' + 'F' + str(front_value) + 'B' + str(rear_value) + 'L' + str(left_value) + 'R' + str(
-                right_value) + 'X' + str(imu_x) + 'Y' + str(imu_y)
-            rec_mess = '1;' + str(front_1) + ';' + str(left_1) + ';' + str(right_1) + ';' + str(ultra_1) + ';' + str(imu_temp) + ';' + str(imu_x) + ';' + str(imu_y) + ';\n'
-        else:
-            get_0 = False
-            get_1 = False
-            se_send = ''
-            rec_mess = ''
-        # 如果有C0或C1的数据，锁定后串口传输
-        if get_0 or get_1:
-            # lock_ser.acquire()
-            # try:
-            #     se.write(se_send.encode())
-            # except Exception as e:
-            #     print(e)
-            # finally:
-            #     str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-            #     print(str_time)
-            #     print(se_send)
-            # lock_ser.release()
-            str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-            print(str_time, se_send)
-            lock_ser.acquire()
-            rec_mess = str_time + ';' + rec_mess
-            file_data = open(file_address + 'Sensors.txt', 'a')
-            file_data.write(rec_mess)
-            file_data.close()
-            lock_ser.release()
-
-        # 读取UPS
-        if loop_num % 2000 == 0:
-            file_rec = open(file_address + 'UPS.txt', 'a')
-            str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-            ina_mess, i_value = INA219.get_ina219_data()
-            file_rec.write(str_time + '   ' + '\n' + ina_mess)
-            file_rec.close()
-            print('I=' + str(round(i_value, 4)) + 'A')
-            if (i_last - i_value) > 1.0:
-                # os.system('shutdown now')
-                print('shutdown', i_last)
-                i_last = i_value
-            else:
-                i_last = i_value
-        end_time = time.time()
-        # print('timer', str(loop_num), str(round((end_time - start_time) * 1000, 4)))
 
 
 # 串口读取超声数据
@@ -599,7 +483,6 @@ def run_multi_camera():
     processes.append(
         mp.Process(target=distance_get, args=(queue_cam1, queue_s1, queue_ultra_1, queue_imu_1, lock, 1, str_fileAddress)))
 
-    # processes.append(mp.Process(target=uart_ups_get, args=(queue_s0, queue_s1, queue_imu, lock, str_fileAddress)))
     processes.append(mp.Process(target=ultra_get, args=(queue_ultra_0, queue_ultra_1, lock, str_fileAddress)))
     processes.append(mp.Process(target=imu_get, args=(queue_imu_0, queue_imu_1, str_fileAddress)))
 

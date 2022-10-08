@@ -211,20 +211,21 @@ def get_parameter(img_frame):
 model_f = 0
 principal_x = 0
 principal_y = 0
-model_w = int(input('间距W'))
+# model_w = int(input('间距W'))
 cap_id = int(input('相机编号(0/1)'))
 
 while (cap_id != 0) and (cap_id != 1):
     cap_id = int(input('相机编号(0/1)'))
 
+model_w = 101
 if cap_id == 0:
-    model_f = 1120
-    principal_x = 1006
-    principal_y = 605
+    model_f = 734
+    principal_x = 990
+    principal_y = 570
 else:
     model_f = 940
-    principal_x = 1092
-    principal_y = 571
+    principal_x = 828
+    principal_y = 509
 
 # 打开模型参数存储文件
 file_rec = open('Model.txt', 'r', encoding='utf-8')
@@ -238,7 +239,7 @@ else:
         para_camera[i] = para_lines[i].strip('\n')
 file_rec.close()
 # 连接摄像头
-cap = cv2.VideoCapture(cap_id)
+cap = cv2.VideoCapture(0)
 cap.set(6, 1196444237)
 cap.set(3, 1920)
 cap.set(4, 1080)
@@ -250,7 +251,12 @@ mid_height = int(img_height / 2)
 mid_width = int(img_width / 2)
 
 while True:
-    ret, frame = cap.read()
+    ret, frame_org = cap.read()
+    if cap_id == 1:
+        dst = cv2.rotate(frame_org, cv2.ROTATE_180)
+        frame = dst
+    else:
+        frame = frame_org.copy()
 
     if cv2.waitKey(1) & 0xFF == ord('c'):
         str_time = datetime.datetime.now().strftime('%H%M%S')

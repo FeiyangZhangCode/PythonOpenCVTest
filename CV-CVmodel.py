@@ -31,9 +31,9 @@ def get_red(img_rgb):
     # img_red = img_new.copy()
     img_new = np.zeros((img_height, img_width, 3), np.uint8)
     # 提取红色部分
-    b_threshold = 100
-    g_threshold = 100
-    r_threshold = 130
+    b_threshold = 150
+    g_threshold = 150
+    r_threshold = 200
     b, g, r = cv2.split(img_rgb)
     for j_ut in range(0, img_width, 1):
         for i_ut in range(0, img_height, 1):
@@ -164,7 +164,7 @@ def get_parameter(gra_edge):
 # 开始主程序
 # 提取图像
 
-file_name = 'Cali-171116'
+file_name = 'Cali-135'
 rgb_frame = cv2.imread('./TestData/' + file_name + '.jpg')
 # 获取图像位置参数
 img_test = rgb_frame.copy()
@@ -173,10 +173,10 @@ img_width = int(img_test.shape[1])
 mid_height = int(img_height / 2)
 mid_width = int(img_width / 2)
 
-model_F = 940
+model_F = 734
 model_W = 101
-principal_x = 1092
-principal_y = 571
+principal_x = 990
+principal_y = 570
 if img_height < 1080:
     principal_y = int(principal_y * img_height / 1080)
 if img_width < 1920:
@@ -184,8 +184,8 @@ if img_width < 1920:
 
 # 提取红色线,手动去除校准用红色区域
 gra_red = get_red(img_test)
-gra_red[0:principal_y + 195, :] = 0
-
+gra_red[0:principal_y + 50, :] = 0
+cv2.imshow('t0', gra_red)
 # Canny提取边界
 gra_edge = cv2.Canny(gra_red, 70, 140)
 
@@ -259,7 +259,7 @@ for i in range(0, mid_height, 1):
 
 
 
-cv2.imshow('test', gra_half)
+cv2.imshow('test', img_test)
 print(model_a, model_b, principal_x, principal_y)
 # cv2.imwrite('./TestData/' + file_name + '-dis.jpg', img_test)
 
