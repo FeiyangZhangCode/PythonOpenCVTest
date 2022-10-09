@@ -63,8 +63,50 @@ def calc_w2x(flo_w, y, f, w, a, b, p_x):
     return int(x_back)
 
 
-# 调用相机获取图片进行测距
-def distance_get(q_s, q_u, q_i, lock_ser, cap_id, file_address):
+# 抓取图片，确认视频流的读入
+def image_put(q, c_id, file_address):
+    cap = cv2.VideoCapture(c_id)
+    cap.set(6, 1196444237)
+    cap.set(3, 1920)
+    cap.set(4, 1080)
+    cap.set(5, 30)
+    cap.set(11, 80)
+    cap.set(12, 80)
+    # 获取视频帧率
+    print(get_camera_data(cap, c_id))
+    if cap.isOpened():
+        print('Get1', c_id)
+    else:
+        cap = cv2.VideoCapture(c_id)
+        cap.set(6, 1196444237)
+        cap.set(3, 1920)
+        cap.set(4, 1080)
+        cap.set(5, 30)
+        print(get_camera_data(cap, c_id))
+        print('Get2', c_id)
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        # 抓取图片不成功再重新抓取
+        if not ret:
+            cap = cv2.VideoCapture(c_id)
+            ret, frame = cap.read()
+        if c_id == 1:
+            frame_put = cv2.rotate(frame, cv2.ROTATE_180)
+        else:
+            frame_put = frame.copy()
+        q.put(frame_put)
+        str_Time = datetime.datetime.now().strftime('%H%M%S-%f')
+        # cv2.imshow('Cap' + str(c_id), frame_put)
+        cv2.imwrite(file_address + 'C' + str(c_id) + '-' + str_Time + '.jpg', frame_put)
+
+        # print('q.qsize():', q.qsize())
+        q.get() if q.qsize() > 1 else time.sleep(0.01)
+        # cv2.waitKey(1)
+
+
+# 获得视频流帧数图片，调用测距
+def distance_get(q_c, q_s, q_u, q_i, lock_ser, cap_id, file_address):
     # 根据相机编号分配模型参数
     global para_lines
     if int(cap_id) == 0:
@@ -82,58 +124,31 @@ def distance_get(q_s, q_u, q_i, lock_ser, cap_id, file_address):
         principal_x = int(para_lines[10].strip('\n'))
         principal_y = int(para_lines[11].strip('\n'))
 
-    # 尝试连接相机
-    cap = cv2.VideoCapture(cap_id)
-    cap.set(6, 1196444237)
-    cap.set(3, 1920)
-    cap.set(4, 1080)
-    cap.set(5, 30)
-    cap.set(11, 80)
-    cap.set(12, 80)
-    # 获取视频帧率
-    print(get_camera_data(cap, cap_id))
-    if cap.isOpened():
-        print('Get1', cap_id)
-    else:
-        cap = cv2.VideoCapture(cap_id)
-        cap.set(6, 1196444237)
-        cap.set(3, 1920)
-        cap.set(4, 1080)
-        cap.set(5, 30)
-        print(get_camera_data(cap, cap_id))
-        print('Get2', cap_id)
-
     # 循环处理图像
     loop_num = 0
     imu_yaw = 0.0
     imu_tmp = 0.0
-    imu_pitch = 0.0
-    while cap.isOpened():
+    while True:
         start_time_total = time.time()
-        str_Time = datetime.datetime.now().strftime('%H%M%S-%f')
         loop_num += 1
+        str_Time = datetime.datetime.now().strftime('%H%M%S-%f')
+
         ret_mess = ''  # 数据信息
         err_mess = ''  # 报错信息
         time_mess = ''  # 时间信息
         ret_value = [0] * 4  # 0是水平线，1是左垂线，2是右垂线，3是超声波
 
         # 获取图像及参数
-        start_time = time.time()
-        ret, frame = cap.read()
-        if not ret:
-            cap = cv2.VideoCapture(cap_id)
-            ret, frame = cap.read()
-        if cap_id == 1:
-            rgb_frame = cv2.rotate(frame, cv2.ROTATE_180)
+        if not q_c.empty():
+            rgb_frame = q_c.get()
         else:
-            rgb_frame = frame.copy()
+            cv2.waitKey(40)
+            rgb_frame = q_c.get()
         img_height = int(rgb_frame.shape[0])
         img_width = int(rgb_frame.shape[1])
         mid_height = int(img_height / 2)
         mid_width = int(img_width / 2)
         rgb_rot = rgb_frame.copy()
-        end_time = time.time()
-        time_mess += 'Cap:' + str(round((end_time - start_time) * 1000, 4)) + ';'
 
         # Canny提取边界，保留下半部分
         start_time = time.time()
@@ -170,9 +185,8 @@ def distance_get(q_s, q_u, q_i, lock_ser, cap_id, file_address):
         # 获取机身IMU的偏航角
         if not q_i.empty():
             imu_list = q_i.get()
-            imu_yaw = imu_list[1]
-            imu_tmp = imu_list[0]
-            imu_pitch = imu_list[2]
+            imu_yaw = imu_list[2]
+            imu_tmp = imu_list[1]
         if len(lines) > 0:
             for line in lines:
                 for x1_p, y1_p, x2_p, y2_p in line:
@@ -204,6 +218,10 @@ def distance_get(q_s, q_u, q_i, lock_ser, cap_id, file_address):
                                             hor_angle_weight + line_length)
                                 hor_angle_weight = hor_angle_weight + line_length
                             cv2.line(rgb_rot, (x1_p, y1_p), (x2_p, y2_p), (255, 0, 0), 1)
+                            # x_mid = int((x1_p + x2_p) / 2)
+                            # y_mid = int((y1_p + y2_p) / 2)
+                            # cv2.putText(rgb_rot, str(round(tan_line, 2)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX,
+                            #             0.6, (255, 0, 0), 1)
             angle_set = ver_angle_avg
         else:
             angle_set = imu_yaw
@@ -411,25 +429,13 @@ def distance_get(q_s, q_u, q_i, lock_ser, cap_id, file_address):
             q_s.get()
 
 
-# 读取超声波和IMU数据
-def sensor_get(q_u0, q_u1, q_i0, q_i1, lock_ser, file_address):
+# 串口读取超声数据
+def ultra_get(q_u0, q_u1, lock_ser, file_address):
     se_u = serial.Serial('/dev/ttyTHS1', 9600, timeout=0.1)
     while True:
         try:
-            # 串口发出超声波采样指令
             se_u.write('1'.encode())
-            # I2C采集IMU数据
-            cv2.waitKey(50)
-            temp_out, rot_x, rot_y, sav_mess = MPU6050.get_imu_data()
-            file_rec = open(file_address + 'MPU.txt', 'a')
-            file_rec.write(sav_mess)
-            file_rec.close()
-            send_list = [round(temp_out, 2), round(rot_x, 2), round(rot_y, 2)]
-            q_i0.put(send_list)
-            q_i0.get() if q_i0.qsize() > 1 else time.sleep(0.005)
-            q_i1.put(send_list)
-            q_i1.get() if q_i1.qsize() > 1 else time.sleep(0.005)
-            # 串口接收超声波数据
+            time.sleep(0.1)
             ult_rec = se_u.readline()
             lock_ser.acquire()
             if ult_rec:
@@ -455,6 +461,22 @@ def sensor_get(q_u0, q_u1, q_i0, q_i1, lock_ser, file_address):
             lock_ser.release()
 
 
+# I2C读取IMU数据
+def imu_get(q_i0, q_i1, file_address):
+    while True:
+        cv2.waitKey(50)
+        temp_out, rot_x, rot_y, sav_mess = MPU6050.get_imu_data()
+        file_rec = open(file_address + 'MPU.txt', 'a')
+        str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+        file_rec.write(sav_mess)
+        file_rec.close()
+        send_list = [str_time, round(temp_out, 2), round(rot_x, 2), round(rot_y, 2)]
+        q_i0.put(send_list)
+        q_i0.get() if q_i0.qsize() > 1 else time.sleep(0.005)
+        q_i1.put(send_list)
+        q_i1.get() if q_i1.qsize() > 1 else time.sleep(0.005)
+
+
 def quit_all():
     print('Exit ALL')
     os.kill(os.getpid(), signal.SIGTERM)
@@ -474,6 +496,8 @@ def run_multi_camera():
     mp.set_start_method(method='spawn')  # init
     processes = []
     lock = mp.Lock()
+    queue_cam0 = mp.Queue(maxsize=2)
+    queue_cam1 = mp.Queue(maxsize=2)
     queue_s0 = mp.Queue(maxsize=2)
     queue_s1 = mp.Queue(maxsize=2)
     queue_ultra_0 = mp.Queue(maxsize=2)
@@ -481,11 +505,16 @@ def run_multi_camera():
     queue_imu_0 = mp.Queue(maxsize=2)
     queue_imu_1 = mp.Queue(maxsize=2)
     processes.append(
-        mp.Process(target=distance_get, args=(queue_s0, queue_ultra_0, queue_imu_0, lock, 0, str_fileAddress)))
+        mp.Process(target=image_put, args=(queue_cam0, 0, str_fileAddress)))
     processes.append(
-        mp.Process(target=distance_get, args=(queue_s1, queue_ultra_1, queue_imu_1, lock, 1, str_fileAddress)))
+        mp.Process(target=distance_get, args=(queue_cam0, queue_s0, queue_ultra_0, queue_imu_0, lock, 0, str_fileAddress)))
+    processes.append(
+        mp.Process(target=image_put, args=(queue_cam1, 1, str_fileAddress)))
+    processes.append(
+        mp.Process(target=distance_get, args=(queue_cam1, queue_s1, queue_ultra_1, queue_imu_1, lock, 1, str_fileAddress)))
 
-    processes.append(mp.Process(target=sensor_get, args=(queue_ultra_0, queue_ultra_1, queue_imu_0, queue_imu_1, lock, str_fileAddress)))
+    processes.append(mp.Process(target=ultra_get, args=(queue_ultra_0, queue_ultra_1, lock, str_fileAddress)))
+    processes.append(mp.Process(target=imu_get, args=(queue_imu_0, queue_imu_1, str_fileAddress)))
 
     for process in processes:
         process.daemon = True

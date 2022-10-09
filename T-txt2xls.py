@@ -21,7 +21,7 @@ def txt2xls(filename, xlsname):
             #     item = value[3:]
     #         #            item=i.strip().decode('utf8')
     #         item = i.strip()
-            sheet.write(x, y, item)
+            sheet.write(x, y, item[4:])
             # print(x, y, item)
             y += 1  # 另起一列
         x += 1  # 另起一行
@@ -31,6 +31,6 @@ def txt2xls(filename, xlsname):
     print(num_line)
 
 
-filename = './TestData/MPU-20220927.txt'
-xlsname = './TestData/MPU-20220927.xls'
+filename = './TestData/1.txt'
+xlsname = './TestData/1.xls'
 txt2xls(filename, xlsname)
