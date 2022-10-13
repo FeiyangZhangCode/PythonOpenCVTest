@@ -22,18 +22,32 @@ def get_ports():
     return port_num
 
 
-if __name__ == '__main__':
-    # ser = serial.Serial(get_ports(), BAUD_RATE, timeout=0.5)
-    ser = serial.Serial('COM8', 115200, timeout=0.1)
-    print('Start Read')
-    get_num = 0
+def serial_read():
+    se1 = serial.Serial('COM4', 9600, timeout=0.02)
+    print('Read Ready')
     while True:
-        time.sleep(0.2)
-        # line = ser.readline()
-        # if line:
-        str_send = 'aa 02 00 00 00 00 a8'
-        hex_send = bytes.fromhex(str_send)
-        ser.write(hex_send)
+        # time.sleep(1)
+        line = se1.readline()
+        if line:
+            # se1.write('Get\r\n'.encode())
+            str_rec = binascii.b2a_hex(line).decode()
+            print(str_rec)
+
+
+
+if __name__ == '__main__':
+    serial_read()
+    # ser = serial.Serial(get_ports(), BAUD_RATE, timeout=0.5)
+    # ser = serial.Serial('COM5', 115200, timeout=0.1)
+    # print('Start Read')
+    # get_num = 0
+    # while True:
+    #     time.sleep(0.2)
+    #     # line = ser.readline()
+    #     # if line:
+    #     str_send = 'aa 02 00 00 00 00 a8'
+    #     hex_send = bytes.fromhex(str_send)
+    #     ser.write(hex_send)
         # str_rec = binascii.b2a_hex(line)
         # # if str_rec.decode('utf-8') != 'aa0100000000a8':
         # print(str_rec)

@@ -115,7 +115,7 @@ def distance_get(q_s, q_u, q_i, lock_ser, cap_id, file_address):
         ret_mess = ''  # 数据信息
         err_mess = ''  # 报错信息
         time_mess = ''  # 时间信息
-        ret_value = [0] * 4  # 0是水平线，1是左垂线，2是右垂线，3是超声波
+        ret_value = [0.0] * 5  # 0是水平线，1是左垂线，2是右垂线，3是超声波，4是偏航角
 
         # 获取图像及参数
         start_time = time.time()
@@ -207,6 +207,8 @@ def distance_get(q_s, q_u, q_i, lock_ser, cap_id, file_address):
             angle_set = ver_angle_avg
         else:
             angle_set = imu_yaw
+
+        ret_value[4] = angle_set
         end_time = time.time()
         time_mess += 'Yaw:' + str(round((end_time - start_time) * 1000, 4)) + ';'
 
@@ -359,7 +361,7 @@ def distance_get(q_s, q_u, q_i, lock_ser, cap_id, file_address):
             cv2.line(rgb_rot, (0, height_ultra), (img_width, height_ultra), (255, 255, 255), 1)
             cv2.putText(rgb_rot, str(ultra_value), (mid_width, height_ultra), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                         (255, 255, 255), 1)
-        ret_value[3] = int(ultra_value)
+        ret_value[3] = ultra_value
         end_time = time.time()
         time_mess += 'Ult:' + str(round((end_time - start_time) * 1000, 4)) + ';'
         # 显示及保存图片
@@ -375,14 +377,6 @@ def distance_get(q_s, q_u, q_i, lock_ser, cap_id, file_address):
         time_total = str(round((end_time_total - start_time_total) * 1000, 4)) + 'ms\n'
         time_mess += 'All:' + str(round((end_time_total - start_time_total) * 1000, 4)) + ';'
         # 显示数据
-        # if cap_id == 0:
-        #     print(str_Time, 'Front', time_total, str(round(ret_value[0], 0)), str(round(ret_value[1], 0)),
-        #           str(round(ret_value[2], 0)), str(round(ret_value[3], 0)),
-        #           str(round(angle_set, 2)), str(round(imu_yaw, 2)), str(round(imu_tmp, 2)))
-        # else:
-        #     print(str_Time, 'Back', time_total, str(round(ret_value[0], 0)), str(round(ret_value[2], 0)),
-        #           str(round(ret_value[1], 0)), str(round(ret_value[3], 0)),
-        #           str(round(angle_set, 2)), str(round(imu_yaw, 2)), str(round(imu_tmp, 2)))
         if cap_id == 0:
             print(str(int(ret_value[1])), str(int(ret_value[2])), 'F' + str(int(ret_value[3])), str(round(imu_yaw, 2)))
         else:
@@ -453,6 +447,62 @@ def sensor_get(q_u0, q_u1, q_i0, q_i1, lock_ser, file_address):
             print(e)
         finally:
             lock_ser.release()
+
+
+# 融合前后单目、超声和IMU，快速更新四向和偏航角
+def perception_fusion(q_c0, q_c1, q_u, q_i, q_p, lock_ser, file_address):
+    ultra_front = 0
+    ultra_back = 0
+    ultra_time = ''
+    imu_yaw = 0.0
+    imu_pitch = 0.0
+    imu_temp = 0.0
+    imu_time = ''
+    c0_front = 0.0
+    c0_left = 0.0
+    c0_right = 0.0
+    c0_yaw = 0.0
+    c1_back = 0.0
+    c1_left = 0.0
+    c1_right = 0.0
+    c1_yaw = 0.0
+
+    while True:
+        has_c0 = not q_c0.empty()
+        has_c1 = not q_c1.empty()
+        has_ultra = not q_u.empty()
+        has_imu = not q_i.empty()
+
+        # 有新IMU，直接录入
+        if has_imu:
+            imu_list = q_i.get()
+            imu_time = imu_list[0]
+            imu_temp = imu_list[1]
+            imu_yaw = imu_list[2]
+            imu_pitch = imu_list[3]
+
+        # 有新超声波，直接录入
+        if has_ultra:
+            ultra_list = q_u.get()
+            ultra_time = ultra_list[0]
+            ultra_front = ultra_list[1]
+            ultra_back = ultra_list[2]
+
+        # 有新相机0，判断情况
+        if has_c0:
+            c0_list = q_c0.get()
+            new_front = c0_list[0]
+            new_left = c0_list[1]
+            new_right = c0_list[2]
+
+            # 首轮执行，直接录入数据
+            if c0_left == c0_right == c0_front == 0.0:
+                c0_front = new_front
+                c0_left = new_left
+                c0_right = new_right
+                c0_yaw = c0_list[4]
+            else:
+
 
 
 def quit_all():

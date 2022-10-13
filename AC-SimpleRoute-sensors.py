@@ -199,9 +199,12 @@ def func_action(list_action, q_u, q_i, lock_ser, file_address):
                     str_send = binascii.b2a_hex(hex_action).decode('utf-8')
                     str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
                     file_rec = open(file_address + 'Control.txt', 'a')
-                    file_rec.write(str_Time + ',auto,s,' + str_send + '\r\n')
+                    file_rec.write(str_Time + ';auto;s;' + str_send + ';\n')
                     file_rec.close()
                     # print(str_Time, 's', str_send)
+
+                    cv2.waitKey(60)
+
                     # 获取偏航角
                     if not q_i.empty():
                         imu_list = q_i.get()
@@ -217,7 +220,6 @@ def func_action(list_action, q_u, q_i, lock_ser, file_address):
                         ultra_back = ultra_list[2]
                     print('超声波', ultra_front, ultra_back, '偏航角', imu_yaw, '机内温度', imu_temp)
 
-                    cv2.waitKey(60)
                     hex_rec = se.readline()
                     if hex_rec:
                         # 收到反馈，跳出反馈循环
@@ -232,7 +234,7 @@ def func_action(list_action, q_u, q_i, lock_ser, file_address):
                         else:
                             print('长度异常', str_rec)
                         file_rec = open(file_address + 'Control.txt', 'a')
-                        file_rec.write(str_Time + ',auto,r,' + str_rec + '\r\n')
+                        file_rec.write(str_Time + ';auto;r;' + str_rec + ';\n')
                         file_rec.close()
                         # if sensor_state > 0:
                         #     return sensor_state, id_action
@@ -389,34 +391,71 @@ def correct_yaw(now_yaw, target_yaw, cmd_34, q_u, q_i, lock_ser, file_address):
     imu_yaw = now_yaw
     rot_yaw = now_yaw - target_yaw
 
+    loop_nofeedback = 0  # 累加无反馈次数
+    threshold_nofeedback = 10  # 累计无反馈上限值
+
     while abs(rot_yaw) > 1.0:
         last_yaw = imu_yaw - target_yaw
+        # 设置旋转动作
         cmd_2_corSpeed = trans_speed(str(correct_speed))
-        if rot_yaw <= 0:
+        if rot_yaw < 0:
             hex_correctYaw = set_order(cmd_0_head + cmd_1_rotateRight + cmd_2_corSpeed + cmd_34)
         else:
             hex_correctYaw = set_order(cmd_0_head + cmd_1_rotateLeft + cmd_2_corSpeed + cmd_34)
-        get_correct_err = single_action(hex_correctYaw, q_u, q_i, lock_ser, file_address)
-        if get_correct_err == 98:
-            print('无反馈，结束运行')
-            break
+
+        # 发送动作命令
+        se.write(hex_correctYaw)
+        str_send = binascii.b2a_hex(hex_correctYaw).decode('utf-8')
+        str_Time_cy = datetime.datetime.now().strftime('%H:%M:%S.%f')
+        file_rec = open(file_address + 'Control.txt', 'a')
+        file_rec.write(str_Time_cy + ';CorrectYaw;s;' + str_send + ';\n')
+        file_rec.close()
+        # 等待串口发送
+        cv2.waitKey(40)
+
         # 获取偏航角
         if not q_i.empty():
             imu_list = q_i.get()
+            imu_time = imu_list[0]
+            imu_temp = imu_list[1]
             imu_yaw = imu_list[2]
+            imu_pitch = imu_list[3]
+
+        # 读取主板反馈
+        hex_rec = se.readline()
+        if hex_rec:
+            # 收到反馈
+            str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
+            file_rec = open(file_address + 'Control.txt', 'a')
+            file_rec.write(str_Time_cy + ';CorrectYaw;r;' + str_rec + ';\n')
+            file_rec.close()
+            # sensor_state = read_feedback(str_rec, ultra_front, ultra_back, imu_yaw)
         else:
-            cv2.waitKey(20)
-            if not q_i.empty():
-                imu_list = q_i.get()
-                imu_yaw = imu_list[2]
+            # 累计无反馈次数，继续执行
+            loop_nofeedback += 1
+            print('无反馈', str(loop_nofeedback))
+            if loop_nofeedback >= threshold_nofeedback:
+                get_correct_err = 98
+                print('无反馈，结束运行')
+                break
+
+        # 获取偏航角
+        if not q_i.empty():
+            imu_list = q_i.get()
+            imu_time = imu_list[0]
+            imu_temp = imu_list[1]
+            imu_yaw = imu_list[2]
+            imu_pitch = imu_list[3]
+
         rot_yaw = imu_yaw - target_yaw
-        if abs(rot_yaw) <= 1.0:
+        if abs(rot_yaw) <= 1.0:     # 如果与目标角度相差不大于1，则认为已完成，
+            get_correct_err = 0
             break
         else:
             if (abs(last_yaw) > abs(rot_yaw)) and (
-                    (last_yaw < 0 and rot_yaw < 0) or (last_yaw > 0 and rot_yaw > 0)):
+                    (last_yaw < 0 and rot_yaw < 0) or (last_yaw > 0 and rot_yaw > 0)):  # 相差变小并且同向
                 pass
-            elif (last_yaw < 0 and rot_yaw > 0) or (last_yaw > 0 and rot_yaw < 0):  # 如果偏航角变小但是反向了，
+            elif (last_yaw < 0 and rot_yaw > 0) or (last_yaw > 0 and rot_yaw < 0):  # 偏航角反向了，降低旋转速度
                 if correct_speed > 25:
                     correct_speed = correct_speed - 25
     return get_correct_err
@@ -446,11 +485,15 @@ def go_wash(is_front, cmd_2, cmd_34, q_u, q_i, lock_ser, file_address):
             try:
                 se.write(hex_wash)
                 str_send = binascii.b2a_hex(hex_wash).decode('utf-8')
-                str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+                str_Time_wash = datetime.datetime.now().strftime('%H:%M:%S.%f')
                 file_rec = open(file_address + 'Control.txt', 'a')
-                file_rec.write(str_Time + ',wash,s,' + str_send + '\r\n')
+                file_rec.write(str_Time_wash + ';wash;s;' + str_send + ';\n')
                 file_rec.close()
                 # print(str_Time, 's', str_send)
+
+                # 等待串口发送
+                cv2.waitKey(40)
+
                 # 获取偏航角
                 if not q_i.empty():
                     imu_list = q_i.get()
@@ -465,14 +508,29 @@ def go_wash(is_front, cmd_2, cmd_34, q_u, q_i, lock_ser, file_address):
                     ultra_front = ultra_list[1]
                     ultra_back = ultra_list[2]
 
-                cv2.waitKey(40)
+                # 读取串口反馈
                 hex_rec = se.readline()
+
+                # 获取偏航角
+                if not q_i.empty():
+                    imu_list = q_i.get()
+                    imu_time = imu_list[0]
+                    imu_temp = imu_list[1]
+                    imu_yaw = imu_list[2]
+                    imu_pitch = imu_list[3]
+                # 获取前后超声波
+                if not q_u.empty():
+                    ultra_list = q_u.get()
+                    ultra_time = ultra_list[0]
+                    ultra_front = ultra_list[1]
+                    ultra_back = ultra_list[2]
+
                 if hex_rec:
                     # 收到反馈，跳出反馈循环
                     no_feedback = False
                     str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
                     file_rec = open(file_address + 'Control.txt', 'a')
-                    file_rec.write(str_Time + ',wash,r,' + str_rec + '\r\n')
+                    file_rec.write(str_Time_wash + ';wash;r;' + str_rec + ';\n')
                     file_rec.close()
                     sensor_state = read_feedback(str_rec, ultra_front, ultra_back, imu_yaw)
                     # 到左右边，移动远离边界
@@ -485,14 +543,10 @@ def go_wash(is_front, cmd_2, cmd_34, q_u, q_i, lock_ser, file_address):
                                 return get_correct
 
                             if sensor_state == 3:
-                                # hex_correct = set_order(cmd_0_head + cmd_1_rotateRight + cmd_2_max + cmd_34)
-                                # get_correct = multi_action(hex_correct, 10)
                                 get_correct = correct_yaw(imu_yaw, 10.0, cmd_34, q_u, q_i, lock_ser, file_address)
                                 if get_correct == 98:
                                     return get_correct
                             elif sensor_state == 4:
-                                # hex_correct = set_order(cmd_0_head + cmd_1_rotateLeft + cmd_2_max + cmd_34)
-                                # get_correct = multi_action(hex_correct, 10)
                                 get_correct = correct_yaw(imu_yaw, -10.0, cmd_34, q_u, q_i, lock_ser, file_address)
                                 if get_correct == 98:
                                     return get_correct
@@ -503,14 +557,10 @@ def go_wash(is_front, cmd_2, cmd_34, q_u, q_i, lock_ser, file_address):
                                 return get_correct
 
                             if sensor_state == 3:
-                                # hex_correct = set_order(cmd_0_head + cmd_1_rotateLeft + cmd_2_max + cmd_34)
-                                # get_correct = multi_action(hex_correct, 10)
                                 get_correct = correct_yaw(imu_yaw, -10.0, cmd_34, q_u, q_i, lock_ser, file_address)
                                 if get_correct == 98:
                                     return get_correct
                             elif sensor_state == 4:
-                                # hex_correct = set_order(cmd_0_head + cmd_1_rotateRight + cmd_2_max + cmd_34)
-                                # get_correct = multi_action(hex_correct, 10)
                                 get_correct = correct_yaw(imu_yaw, 10.0, cmd_34, q_u, q_i, lock_ser, file_address)
                                 if get_correct == 98:
                                     return get_correct
@@ -775,7 +825,7 @@ def autocontrol_run(q_u, q_i, lock_ser, file_address):
             try:
                 se.write(hex_init_send)
                 file_rec = open(file_address + 'Control.txt', 'a')
-                file_rec.write(str_Time_ac + ',init,s,' + str_init + '\r\n')
+                file_rec.write(str_Time_ac + ';init;s;' + str_init + ';\n')
                 file_rec.close()
                 # print(str_Time_ac, 'i', str_init)
                 # 获取偏航角
@@ -791,9 +841,25 @@ def autocontrol_run(q_u, q_i, lock_ser, file_address):
                     ultra_time = ultra_list[0]
                     ultra_front = ultra_list[1]
                     ultra_back = ultra_list[2]
-                print('超声波', str(ultra_front), str(ultra_back), '偏航角', str(imu_yaw), '机内温度', str(imu_temp))
+
                 # 发送后，延时读取
-                cv2.waitKey(40)
+                cv2.waitKey(30)
+
+                # 获取偏航角
+                if not q_i.empty():
+                    imu_list = q_i.get()
+                    imu_time = imu_list[0]
+                    imu_temp = imu_list[1]
+                    imu_yaw = imu_list[2]
+                    imu_pitch = imu_list[3]
+                # 获取前后超声波
+                if not q_u.empty():
+                    ultra_list = q_u.get()
+                    ultra_time = ultra_list[0]
+                    ultra_front = ultra_list[1]
+                    ultra_back = ultra_list[2]
+                print('超声波', str(ultra_front), str(ultra_back), '偏航角', str(imu_yaw), '机内温度', str(imu_temp))
+
                 hex_init_rec = se.readline()
                 if hex_init_rec:
                     str_init_rec = binascii.b2a_hex(hex_init_rec).decode('utf-8')
@@ -808,13 +874,21 @@ def autocontrol_run(q_u, q_i, lock_ser, file_address):
                     else:
                         print('串口数据异常')
                     file_rec = open(file_address + 'Control.txt', 'a')
-                    file_rec.write(str_Time_ac + ',init,r,' + str_init_rec + '\r\n')
+                    file_rec.write(str_Time_ac + ';init;r;' + str_init_rec + ';\n')
                     file_rec.close()
             except Exception as e:
                 print(e)
 
         # 初始偏航校正
         print('初始偏航校正')
+        # 获取偏航角
+        if not q_i.empty():
+            imu_list = q_i.get()
+            imu_time = imu_list[0]
+            imu_temp = imu_list[1]
+            imu_yaw = imu_list[2]
+            imu_pitch = imu_list[3]
+
         if abs(imu_yaw) > 5.0:
             board_cmd = cmd_3_stop + cmd_4_stop
             get_state = correct_yaw(imu_yaw, 0.0, board_cmd, q_u, q_i, lock_ser, file_address)
