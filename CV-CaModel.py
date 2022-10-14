@@ -217,7 +217,7 @@ cap_id = int(input('相机编号(0/1)'))
 while (cap_id != 0) and (cap_id != 1):
     cap_id = int(input('相机编号(0/1)'))
 
-model_w = 101
+model_w = 200
 if cap_id == 0:
     model_f = 734
     principal_x = 990
@@ -262,7 +262,7 @@ while True:
         str_time = datetime.datetime.now().strftime('%H%M%S')
         str_address = './TestData/'
         # 存储原图
-        cv2.imwrite(str_address + 'Cali-' + str_time + '.jpg', frame)
+        cv2.imwrite(str_address + 'Cali-' + str(cap_id) + '-' + str_time + '.jpg', frame)
         # 计算参数
         model_a, model_b, frame_lines = get_parameter(frame)
         # 画图像十字线

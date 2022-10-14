@@ -31,9 +31,9 @@ def get_red(img_rgb):
     # img_red = img_new.copy()
     img_new = np.zeros((img_height, img_width, 3), np.uint8)
     # 提取红色部分
-    b_threshold = 150
-    g_threshold = 150
-    r_threshold = 200
+    b_threshold = 155
+    g_threshold = 155
+    r_threshold = 195
     b, g, r = cv2.split(img_rgb)
     for j_ut in range(0, img_width, 1):
         for i_ut in range(0, img_height, 1):
@@ -164,7 +164,7 @@ def get_parameter(gra_edge):
 # 开始主程序
 # 提取图像
 
-file_name = 'Cali-135'
+file_name = 'Cali-1-093624'
 rgb_frame = cv2.imread('./TestData/' + file_name + '.jpg')
 # 获取图像位置参数
 img_test = rgb_frame.copy()
@@ -173,10 +173,10 @@ img_width = int(img_test.shape[1])
 mid_height = int(img_height / 2)
 mid_width = int(img_width / 2)
 
-model_F = 734
-model_W = 101
-principal_x = 990
-principal_y = 570
+model_F = 740
+model_W = 200
+principal_x = 929
+principal_y = 578
 if img_height < 1080:
     principal_y = int(principal_y * img_height / 1080)
 if img_width < 1920:
@@ -184,10 +184,15 @@ if img_width < 1920:
 
 # 提取红色线,手动去除校准用红色区域
 gra_red = get_red(img_test)
-gra_red[0:principal_y + 50, :] = 0
+gra_red[0:principal_y + 100, :] = 0
+gra_red[principal_y + 50:, 0:int(img_width * 0.25)] = 0
+gra_red[principal_y + 50:, int(img_width * 0.75):img_width] = 0
+
 cv2.imshow('t0', gra_red)
 # Canny提取边界
 gra_edge = cv2.Canny(gra_red, 70, 140)
+
+cv2.imshow('can', gra_edge)
 
 # cv2.imwrite('./TestData/' + file_name + '-gra.jpg', gra_edge)
 # 计算参数，返回水平线高度，垂直线HoughLinesP结果，从右向左的第3和第2条线的a和b值

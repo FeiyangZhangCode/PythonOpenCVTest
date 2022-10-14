@@ -180,13 +180,19 @@ err_mess = ''  # 报错信息
 time_mess = ''  # 时间信息
 ret_value = [0] * 4  # 0是水平线，1是左垂线，2是右垂线，3是超声波
 
-rgb_frame = cv2.imread('./TestData/Canny--cloud/C0-112523-400981.jpg')
+imu_yaw = -24.31
+cap_id = 0
+ultra_value = 0.0
+file_address = './Testdata/20221011-1522/ana/'
+rgb_frame = cv2.imread('./TestData/20221011-1522/C0/C0-152454-099682.jpg')
 # angle_set = -10.81  # 车头向左偏，需要顺时针旋转，角度为负。车头向右偏，需要逆时针旋转，角度为正。
 img_height = int(rgb_frame.shape[0])
 img_width = int(rgb_frame.shape[1])
 mid_height = int(img_height / 2)
 mid_width = int(img_width / 2)
 
+start_time_total = time.time()
+str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
 rgb_rot = rgb_frame.copy()
 
 # 提取红色线
@@ -194,10 +200,11 @@ rgb_rot = rgb_frame.copy()
 
 # Canny提取边界，保留下半部分
 start_time = time.time()
-# gra_edge = CVFunc.find_edge_light(rgb_frame)
+rgb_half = rgb_frame.copy()
+rgb_half[0:principal_y - 50, :] = (0, 0, 0)
 minCan = 40
 maxCan = 100
-gra_edge = cv2.Canny(rgb_frame, minCan, maxCan)
+gra_edge = cv2.Canny(rgb_half, minCan, maxCan)
 end_time = time.time()
 time_mess += 'Canny:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
 
@@ -207,237 +214,267 @@ gra_edge_rot[0:principal_y, :] = 0
 end_time = time.time()
 time_mess += 'Half:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
 
+cv2.imshow('test', gra_edge_rot)
+
 # 获取水平和垂直线
-try:
-    # 获取水平和垂直线
-    start_time = time.time()
-    lines = cv2.HoughLinesP(gra_edge_rot, rho=1.0, theta=np.pi / 180, threshold=20, minLineLength=20, maxLineGap=5)
-    end_time = time.time()
-    time_mess += 'Hou:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
+start_time = time.time()
+lines = cv2.HoughLinesP(gra_edge_rot, rho=1.0, theta=np.pi / 180, threshold=100, minLineLength=100, maxLineGap=5)
+end_time = time.time()
+time_mess += 'Hou:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
 
-    # 识别线提取偏航角
-    start_time = time.time()
-    num_line = 0
-    hor_angle_avg = 0.0
-    hor_angle_weight = 0
-    ver_angle_avg = 0.0
-    ver_angle_weight = 0
+# 识别线提取偏航角
+start_time = time.time()
+num_line = 0
+hor_angle_avg = 0.0
+hor_angle_weight = 0
+ver_angle_avg = 0.0
+ver_angle_weight = 0
 
-    if len(lines) > 0:
-        for line in lines:
-            for x1_p, y1_p, x2_p, y2_p in line:
-                line_length = getDist_P2P(x1_p, y1_p, x2_p, y2_p)
-                if line_length > 50.0:
-                    h1 = CVFunc.calc_horizontal(y1_p, model_F, model_W, model_a, model_b)
-                    h2 = CVFunc.calc_horizontal(y2_p, model_F, model_W, model_a, model_b)
-                    w1 = CVFunc.calc_vertical((x1_p - principal_x), y1_p, model_F, model_W, model_a, model_b)
-                    w2 = CVFunc.calc_vertical((x2_p - principal_x), y2_p, model_F, model_W, model_a, model_b)
-                    # 获取玻璃平面上的角度
-                    if w1 == w2:
-                        tan_line = 90
-                    else:
-                        tan_line = np.arctan((h1 - h2) / (w1 - w2)) * 57.29577
-                    if h1 < 5000 and h2 < 5000 and w1 < 5000 and w2 < 5000 and (abs(tan_line) <= 10 or abs(tan_line) >= 80):
-                        num_line += 1
-                        # 大于60度为左右垂直线，小于30度为水平线。后期调整为IMU获得偏航角的±10度
-                        if abs(tan_line) > 80:
-                            if tan_line > 0:
-                                tan_line = tan_line - 90.0
-                            else:
-                                tan_line = 90.0 + tan_line
-                            ver_angle_avg = (ver_angle_avg * ver_angle_weight + tan_line * line_length) / (
-                                    ver_angle_weight + line_length)
-                            ver_angle_weight = ver_angle_weight + line_length
-                        elif abs(tan_line) < 10:
-                            hor_angle_avg = (hor_angle_avg * hor_angle_weight + tan_line * line_length) / (
-                                    hor_angle_weight + line_length)
-                            hor_angle_weight = hor_angle_weight + line_length
-                        # cv2.line(rgb_rot, (x1_p, y1_p), (x2_p, y2_p), (255, 0, 0), 1)
-                        # x_mid = int((x1_p + x2_p) / 2)
-                        # y_mid = int((y1_p + y2_p) / 2)
-                        # cv2.putText(rgb_rot, str(round(tan_line, 2)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX,
-                        #             0.6, (0, 0, 255), 1)
-                        x_plt = np.array([w1, w2])
-                        y_plt = np.array([h1, h2])
-                        plt.plot(x_plt, y_plt, 'r')
-        angle_set = ver_angle_avg
-    else:
-        angle_set = 0.0
-    end_time = time.time()
-    time_mess += 'Yaw:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
+if len(lines) > 0:
+    for line in lines:
+        for x1_p, y1_p, x2_p, y2_p in line:
+            line_length = getDist_P2P(x1_p, y1_p, x2_p, y2_p)
+            cv2.line(rgb_rot, (x1_p, y1_p), (x2_p, y2_p), (0, 255, 0), 1)
+            if line_length > 50.0:
+                h1 = CVFunc.calc_horizontal(y1_p, model_F, model_W, model_a, model_b)
+                h2 = CVFunc.calc_horizontal(y2_p, model_F, model_W, model_a, model_b)
+                w1 = CVFunc.calc_vertical((x1_p - principal_x), y1_p, model_F, model_W, model_a, model_b)
+                w2 = CVFunc.calc_vertical((x2_p - principal_x), y2_p, model_F, model_W, model_a, model_b)
+                # 获取玻璃平面上的角度
+                if w1 == w2:
+                    tan_line = 90
+                else:
+                    tan_line = np.arctan((h1 - h2) / (w1 - w2)) * 57.29577
 
-    # cv2.imshow('Hou', rgb_rot)
+                x_mid = int((x1_p + x2_p) / 2)
+                y_mid = int((y1_p + y2_p) / 2)
+                # cv2.putText(rgb_rot, str(round(tan_line, 2)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX,
+                #             0.6, (255, 0, 0), 1)
+                # if h1 < 2000 and h2 < 2000 and w1 < 2000 and w2 < 2000:
+                #     num_line += 1
+                #     # IMU获得偏航角的±10度
+                #
+                #     if abs(tan_line - imu_yaw) < 20:
+                #         hor_angle_avg = (hor_angle_avg * hor_angle_weight + tan_line * line_length) / (
+                #                 hor_angle_weight + line_length)
+                #         hor_angle_weight = hor_angle_weight + line_length
+                #         cv2.line(rgb_rot, (x1_p, y1_p), (x2_p, y2_p), (255, 0, 0), 1)
+                #         cv2.putText(rgb_rot, str(round(tan_line, 2)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX,
+                #                     0.6, (255, 0, 0), 1)
+                #     elif tan_line > 0:
+                #         # tan_line = tan_line - 90
+                #         ver_angle_avg = (ver_angle_avg * ver_angle_weight + tan_line * line_length) / (
+                #                 ver_angle_weight + line_length)
+                #         ver_angle_weight = ver_angle_weight + line_length
+                #         cv2.line(rgb_rot, (x1_p, y1_p), (x2_p, y2_p), (0, 255, 0), 1)
+                #         cv2.putText(rgb_rot, str(round(tan_line, 2)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX,
+                #                     0.6, (0, 255, 0), 1)
+                #     elif tan_line < 0:
+                #         # tan_line = 90.0 + tan_line
+                #         ver_angle_avg = (ver_angle_avg * ver_angle_weight + tan_line * line_length) / (
+                #                 ver_angle_weight + line_length)
+                #         ver_angle_weight = ver_angle_weight + line_length
+                #         cv2.line(rgb_rot, (x1_p, y1_p), (x2_p, y2_p), (0, 255, 255), 1)
+                #         cv2.putText(rgb_rot, str(round(tan_line, 2)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX,
+                #                     0.6, (0, 255, 255), 1)
+                #     else:
+                #         cv2.line(rgb_rot, (x1_p, y1_p), (x2_p, y2_p), (0, 0, 255), 1)
+                #         cv2.putText(rgb_rot, str(round(tan_line, 2)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX,
+                #                     0.6, (0, 0, 255), 1)
 
-    # 旋转校正、拉平、融合
-    start_time = time.time()
-    num_ver = 0
-    num_hor = 0
-    data_ver = np.zeros((0, 3), dtype=float)  # 垂直线数据，0是最接近中轴的w（x）值，1是最接近相机的h（y）值，2是最远离相机的h（y）值
-    data_hor = np.zeros((0, 3), dtype=float)  # 水平线数据，0是最接近相机的h（y）值，1是最左侧（最小）的w（x）值，2是最右侧（最大）的w（x）值
-    if len(lines) > 0:
-        for line in lines:
-            for x1_p, y1_p, x2_p, y2_p in line:
-                if getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 50.0:
-                    # 根据偏航角进行旋转
-                    h1 = CVFunc.calc_horizontal(y1_p, model_F, model_W, model_a, model_b)
-                    h2 = CVFunc.calc_horizontal(y2_p, model_F, model_W, model_a, model_b)
-                    w1 = CVFunc.calc_vertical((x1_p - principal_x), y1_p, model_F, model_W, model_a, model_b)
-                    w2 = CVFunc.calc_vertical((x2_p - principal_x), y2_p, model_F, model_W, model_a, model_b)
-                    # 获取玻璃平面上的角度
-                    if w1 == w2:
-                        tan_line = 90
-                    else:
-                        tan_line = np.arctan((h1 - h2) / (w1 - w2)) * 57.29577
-                    if h1 < 5000 and h2 < 5000 and w1 < 5000 and w2 < 5000 and (abs(tan_line) <= 10 or abs(tan_line) >= 80):
-                        x1_imu, y1_imu = points_rotate(angle_set, w1, h1)
-                        x2_imu, y2_imu = points_rotate(angle_set, w2, h2)
+    angle_set = ver_angle_avg
+else:
+    angle_set = imu_yaw
+end_time = time.time()
+time_mess += 'Yaw:' + str(round((end_time - start_time) * 1000, 4)) + ';'
 
-                        # 如果调整后不为水平线或者垂直线，进行拉平拉直
-                        if x1_imu != x2_imu and y1_imu != y2_imu:
-                            temp_tan = np.arctan((y1_imu - y2_imu) / (x1_imu - x2_imu)) * 57.29577
-                            if abs(temp_tan) <= 15:  # 判断是水平线,按照最接近相机来拉平
-                                if abs(x1_imu) > abs(x2_imu):
-                                    y1_imu = y2_imu
-                                else:
-                                    y2_imu = y1_imu
-                            elif abs(temp_tan) >= 75:  # 判断是垂直线,按照最接近中轴来拉直
-                                if abs(x1_imu) > abs(x2_imu):
-                                    x1_imu = x2_imu
-                                else:
-                                    x2_imu = x1_imu
+print(ver_angle_avg, hor_angle_avg)
 
-                        # 如果是同一条线，进行融合
-                        temp_show = ''
-                        if y1_imu == y2_imu:  # 水平线
-                            num_hor += 1
-                            temp_show = 'Y' + str(round(y1_imu, 0))
-                            # 如果距离中轴的差值不超过20，则认为是同一条，按照最接近中轴的值进行融合。否则新增为新一条。
-                            temp_left = min(x1_imu, x2_imu)
-                            temp_right = max(x1_imu, x2_imu)
-                            if len(data_hor) == 0:  # 第1条水平线，直接保存
-                                data_hor = np.append(data_hor, [[y1_imu, temp_left, temp_right]], axis=0)
-                            else:
-                                new_hor = True
-                                for values_hor in data_hor:
-                                    if abs(values_hor[0] - y1_imu) < 50:
-                                        if abs((values_hor[2] + values_hor[1]) / 2) > abs((temp_right + temp_left) / 2):
-                                            values_hor[0] = y1_imu
-                                        values_hor[1] = min(values_hor[1], temp_left)
-                                        values_hor[2] = max(values_hor[2], temp_right)
-                                        new_hor = False
-                                        break
-                                if new_hor:
-                                    data_hor = np.append(data_hor, [[y1_imu, temp_left, temp_right]], axis=0)
-                        elif x1_imu == x2_imu:  # 垂直线
-                            num_ver += 1
-                            temp_show = 'X' + str(round(x1_imu, 0))
-                            # 如果距离中轴的差值不超过20，则认为是同一条，按最接近中轴进行融合。否则新增为新一条。
-                            temp_button = min(y1_imu, y2_imu)
-                            temp_top = max(y1_imu, y2_imu)
-                            if len(data_ver) == 0:
-                                data_ver = np.append(data_ver, [[x1_imu, temp_button, temp_top]], axis=0)
-                            else:
-                                new_ver = True
-                                for values_ver in data_ver:
-                                    if abs(values_ver[0] - x1_imu) < 50:
-                                        if abs(values_ver[0]) > abs(x1_imu):
-                                            values_ver[0] = x1_imu
-                                        temp_v = min(values_ver[1], temp_button)
-                                        values_ver[1] = temp_v
-                                        temp_v = max(values_ver[2], temp_top)
-                                        values_ver[2] = temp_v
-                                        new_ver = False
-                                        break
-                                if new_ver:
-                                    data_ver = np.append(data_ver, [[x1_imu, temp_button, temp_top]], axis=0)
-                        else:
-                            temp_show = str(round(x1_imu, 0)) + ',' + str(round(y1_imu, 0)) + '\n' + str(
-                                round(x2_imu, 0)) + ',' + str(round(y2_imu, 0))
-                        # x_plt = np.array([x1_imu, x2_imu])
-                        # y_plt = np.array([y1_imu, y2_imu])
-                        # plt.plot(x_plt, y_plt, 'g')
-    end_time = time.time()
-    time_mess += 'Rotate:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
+# # 旋转校正、拉平、融合
+# start_time = time.time()
+# num_ver = 0
+# num_hor = 0
+# data_ver = np.zeros((0, 3), dtype=float)  # 垂直线数据，0是最接近中轴的w（x）值，1是最接近相机的h（y）值，2是最远离相机的h（y）值
+# data_hor = np.zeros((0, 3), dtype=float)  # 水平线数据，0是最接近相机的h（y）值，1是最左侧（最小）的w（x）值，2是最右侧（最大）的w（x）值
+# if len(lines) > 0:
+#     for line in lines:
+#         for x1_p, y1_p, x2_p, y2_p in line:
+#             if getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 100.0:
+#                 # 根据偏航角进行旋转
+#                 h1 = CVFunc.calc_horizontal(y1_p, model_F, model_W, model_a, model_b)
+#                 h2 = CVFunc.calc_horizontal(y2_p, model_F, model_W, model_a, model_b)
+#                 w1 = CVFunc.calc_vertical((x1_p - principal_x), y1_p, model_F, model_W, model_a, model_b)
+#                 w2 = CVFunc.calc_vertical((x2_p - principal_x), y2_p, model_F, model_W, model_a, model_b)
+#                 # 获取玻璃平面上的角度
+#                 if w1 == w2:
+#                     tan_line = 90
+#                 else:
+#                     tan_line = np.arctan((h1 - h2) / (w1 - w2)) * 57.29577
+#                 if h1 < 2000 and h2 < 2000 and w1 < 2000 and w2 < 2000 and (
+#                         abs(tan_line) <= 30 or abs(tan_line) >= 60):
+#                     x1_imu, y1_imu = points_rotate(angle_set, w1, h1)
+#                     x2_imu, y2_imu = points_rotate(angle_set, w2, h2)
+#
+#                     # 如果调整后不为水平线或者垂直线，进行拉平拉直
+#                     if x1_imu != x2_imu and y1_imu != y2_imu:
+#                         temp_tan = np.arctan((y1_imu - y2_imu) / (x1_imu - x2_imu)) * 57.29577
+#                         if abs(temp_tan) <= 15:  # 判断是水平线,按照最接近相机来拉平
+#                             if abs(x1_imu) > abs(x2_imu):
+#                                 y1_imu = y2_imu
+#                             else:
+#                                 y2_imu = y1_imu
+#                         elif abs(temp_tan) >= 75:  # 判断是垂直线,按照最接近中轴来拉直
+#                             if abs(x1_imu) > abs(x2_imu):
+#                                 x1_imu = x2_imu
+#                             else:
+#                                 x2_imu = x1_imu
+#
+#                     # 如果是同一条线，进行融合
+#                     temp_show = ''
+#                     if y1_imu == y2_imu:  # 水平线
+#                         num_hor += 1
+#                         temp_show = 'Y' + str(round(y1_imu, 0))
+#                         # 如果距离中轴的差值不超过50，则认为是同一条，按照最接近中轴的值进行融合。否则新增为新一条。
+#                         temp_left = min(x1_imu, x2_imu)
+#                         temp_right = max(x1_imu, x2_imu)
+#                         if len(data_hor) == 0:  # 第1条水平线，直接保存
+#                             data_hor = np.append(data_hor, [[y1_imu, temp_left, temp_right]], axis=0)
+#                         else:
+#                             new_hor = True
+#                             for values_hor in data_hor:
+#                                 if abs(values_hor[0] - y1_imu) < 50:
+#                                     if abs((values_hor[2] + values_hor[1]) / 2) > abs((temp_right + temp_left) / 2):
+#                                         values_hor[0] = y1_imu
+#                                     values_hor[1] = min(values_hor[1], temp_left)
+#                                     values_hor[2] = max(values_hor[2], temp_right)
+#                                     new_hor = False
+#                                     break
+#                             if new_hor:
+#                                 data_hor = np.append(data_hor, [[y1_imu, temp_left, temp_right]], axis=0)
+#                     elif x1_imu == x2_imu:  # 垂直线
+#                         num_ver += 1
+#                         temp_show = 'X' + str(round(x1_imu, 0))
+#                         # 如果距离中轴的差值不超过50，则认为是同一条，按最接近中轴进行融合。否则新增为新一条。
+#                         temp_button = min(y1_imu, y2_imu)
+#                         temp_top = max(y1_imu, y2_imu)
+#                         if len(data_ver) == 0:
+#                             data_ver = np.append(data_ver, [[x1_imu, temp_button, temp_top]], axis=0)
+#                         else:
+#                             new_ver = True
+#                             for values_ver in data_ver:
+#                                 if abs(values_ver[0] - x1_imu) < 50:
+#                                     if abs(values_ver[0]) > abs(x1_imu):
+#                                         values_ver[0] = x1_imu
+#                                     temp_v = min(values_ver[1], temp_button)
+#                                     values_ver[1] = temp_v
+#                                     temp_v = max(values_ver[2], temp_top)
+#                                     values_ver[2] = temp_v
+#                                     new_ver = False
+#                                     break
+#                             if new_ver:
+#                                 data_ver = np.append(data_ver, [[x1_imu, temp_button, temp_top]], axis=0)
+#                     else:
+#                         temp_show = str(round(x1_imu, 0)) + ',' + str(round(y1_imu, 0)) + '\n' + str(
+#                             round(x2_imu, 0)) + ',' + str(round(y2_imu, 0))
+# end_time = time.time()
+# time_mess += 'Rot:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+#
+# # 反推图像上的直线位置，找出最近的水平线和左右垂直线
+# start_time = time.time()
+# dis_temp_f = 9999.0
+# dis_temp_r = 9999.0
+# dis_temp_l = -9999.0
+#
+# if len(data_hor) > 0:
+#     for values_hor in data_hor:
+#         w1_b, h1_b = points_rotate(-angle_set, values_hor[1], values_hor[0])
+#         w2_b, h2_b = points_rotate(-angle_set, values_hor[2], values_hor[0])
+#         y1_b = calc_h2y(h1_b, model_F, model_W, model_a, model_b)
+#         y2_b = calc_h2y(h2_b, model_F, model_W, model_a, model_b)
+#         x1_b = calc_w2x(w1_b, y1_b, model_F, model_W, model_a, model_b, principal_x)
+#         x2_b = calc_w2x(w2_b, y2_b, model_F, model_W, model_a, model_b, principal_x)
+#         x_mid = int((x1_b + x2_b) / 2)
+#         y_mid = int((y1_b + y2_b) / 2)
+#         cv2.line(rgb_rot, (x1_b, y1_b), (x2_b, y2_b), (255, 0, 0), 1)
+#         cv2.putText(rgb_rot, str(round(values_hor[0], 0)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+#                     (255, 0, 0), 1)
+#         if dis_temp_f > values_hor[0]:
+#             dis_temp_f = values_hor[0]
+# if len(data_ver) > 0:
+#     for values_ver in data_ver:
+#         w1_b, h1_b = points_rotate(-angle_set, values_ver[0], values_ver[1])
+#         w2_b, h2_b = points_rotate(-angle_set, values_ver[0], values_ver[2])
+#         y1_b = calc_h2y(h1_b, model_F, model_W, model_a, model_b)
+#         y2_b = calc_h2y(h2_b, model_F, model_W, model_a, model_b)
+#         x1_b = calc_w2x(w1_b, y1_b, model_F, model_W, model_a, model_b, principal_x)
+#         x2_b = calc_w2x(w2_b, y2_b, model_F, model_W, model_a, model_b, principal_x)
+#         x_mid = int((x1_b + x2_b) / 2)
+#         y_mid = int((y1_b + y2_b) / 2)
+#         cv2.line(rgb_rot, (x1_b, y1_b), (x2_b, y2_b), (0, 0, 255), 1)
+#         cv2.putText(rgb_rot, str(round(values_ver[0], 0)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+#                     (0, 0, 255), 1)
+#         if values_ver[0] < 0:
+#             if abs(dis_temp_l) > abs(values_ver[0]):
+#                 dis_temp_l = values_ver[0]
+#         else:
+#             if dis_temp_r > values_ver[0]:
+#                 dis_temp_r = values_ver[0]
+# ret_value[0] = dis_temp_f
+# ret_value[1] = dis_temp_l * -1
+# ret_value[2] = dis_temp_r
+# end_time = time.time()
+# time_mess += 'Dra:' + str(round((end_time - start_time) * 1000, 4)) + ';'
 
-    # 反推图像上的直线位置，找出最近的水平线和左右垂直线
-    start_time = time.time()
-    dis_temp_f = 9999.0
-    dis_temp_r = 9999.0
-    dis_temp_l = 9999.0
-
-    if len(data_hor) > 0:
-        for values_hor in data_hor:
-            w1_b, h1_b = points_rotate(-angle_set, values_hor[1], values_hor[0])
-            w2_b, h2_b = points_rotate(-angle_set, values_hor[2], values_hor[0])
-            y1_b = calc_h2y(h1_b, model_F, model_W, model_a, model_b)
-            y2_b = calc_h2y(h2_b, model_F, model_W, model_a, model_b)
-            x1_b = calc_w2x(w1_b, y1_b, model_F, model_W, model_a, model_b, principal_x)
-            x2_b = calc_w2x(w2_b, y2_b, model_F, model_W, model_a, model_b, principal_x)
-            x_mid = int((x1_b + x2_b) / 2)
-            y_mid = int((y1_b + y2_b) / 2)
-            cv2.line(rgb_rot, (x1_b, y1_b), (x2_b, y2_b), (0, 255, 0), 1)
-            cv2.putText(rgb_rot, str(round(values_hor[0], 0)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                        (0, 255, 0), 1)
-            if dis_temp_f > values_hor[0]:
-                dis_temp_f = values_hor[0]
-            x_plt = np.array([w1_b, w2_b])
-            y_plt = np.array([h1_b, h2_b])
-            plt.plot(x_plt, y_plt, 'b')
-    if len(data_ver) > 0:
-        for values_ver in data_ver:
-            w1_b, h1_b = points_rotate(-angle_set, values_ver[0], values_ver[1])
-            w2_b, h2_b = points_rotate(-angle_set, values_ver[0], values_ver[2])
-            y1_b = calc_h2y(h1_b, model_F, model_W, model_a, model_b)
-            y2_b = calc_h2y(h2_b, model_F, model_W, model_a, model_b)
-            x1_b = calc_w2x(w1_b, y1_b, model_F, model_W, model_a, model_b, principal_x)
-            x2_b = calc_w2x(w2_b, y2_b, model_F, model_W, model_a, model_b, principal_x)
-            x_mid = int((x1_b + x2_b) / 2)
-            y_mid = int((y1_b + y2_b) / 2)
-            cv2.line(rgb_rot, (x1_b, y1_b), (x2_b, y2_b), (255, 0, 0), 1)
-            cv2.putText(rgb_rot, str(round(values_ver[0], 0)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                        (255, 0, 0), 1)
-            if values_ver[0] < 0:
-                if abs(dis_temp_l) > abs(values_ver[0]):
-                    dis_temp_l = values_ver[0]
-            else:
-                if dis_temp_r > values_ver[0]:
-                    dis_temp_r = values_ver[0]
-            x_plt = np.array([w1_b, w2_b])
-            y_plt = np.array([h1_b, h2_b])
-            plt.plot(x_plt, y_plt, 'b')
-    ret_value[0] = dis_temp_f
-    ret_value[1] = dis_temp_l
-    ret_value[2] = dis_temp_r
-    end_time = time.time()
-    time_mess += 'Draw:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
-
-    # 画相机中心十字，读取超声数据，反推图像位置，画出水平线
-    start_time = time.time()
-    cv2.line(rgb_rot, (principal_x, 0), (principal_x, img_height), (255, 255, 0), 1)
-    cv2.line(rgb_rot, (0, principal_y), (img_width, principal_y), (255, 255, 0), 1)
-    cv2.circle(rgb_rot, (principal_x, principal_y), 5, (255, 255, 0), 3)
-
-    end_time = time.time()
-    time_mess += 'Center:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
-
-    # ret_mess += 'lines all:' + str(num_line) + ', hor:' + str(num_hor) + ', ver:' + str(num_ver) + '\n'
-    # ret_mess += 'F:' + str(dis_temp_f) + ', L:' + str(dis_temp_l) + ', R:' + str(dis_temp_r) + '\n'
-    # ret_mess += 'ver_yaw:' + str(angle_set) + '\n'
-    print(len(lines), num_line, num_hor, num_ver)
-    print(dis_temp_f, dis_temp_l, dis_temp_r)
-    print(angle_set)
-
-except Exception as e:
-    print(e)
+# 画相机中心十字，读取超声数据，反推图像位置，画出水平线
+start_time = time.time()
+cv2.line(rgb_rot, (principal_x, 0), (principal_x, img_height), (255, 255, 0), 1)
+cv2.line(rgb_rot, (0, principal_y), (img_width, principal_y), (255, 255, 0), 1)
+cv2.circle(rgb_rot, (principal_x, principal_y), 5, (255, 255, 0), 3)
 
 
+if ultra_value > 0 and (ultra_value - model_b) != 0:
+    height_ultra = int(((model_F * model_W) / ultra_value - model_b) / model_a)
+    cv2.line(rgb_rot, (0, height_ultra), (img_width, height_ultra), (0, 255, 255), 1)
+    cv2.putText(rgb_rot, str(ultra_value), (mid_width, height_ultra), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                (0, 255, 255), 1)
+ret_value[3] = int(ultra_value)
+end_time = time.time()
+time_mess += 'Ult:' + str(round((end_time - start_time) * 1000, 4)) + ';'
 # 显示及保存图片
-# print(ret_mess)
-# print(time_mess)
-cv2.imshow('Dis', rgb_rot)
-plt.show()
+# start_time = time.time()
+# rgb_show = cv2.resize(rgb_rot, (480, 270))
+cv2.imshow('Cap' + str(cap_id), rgb_rot)
 # cv2.imwrite(file_address + 'C' + str(cap_id) + '-' + str_Time + '.jpg', rgb_frame)
-# cv2.imwrite(file_address + 'D' + str(cap_id) + '-' + str_Time + '.jpg', frame_distance)
+# cv2.imwrite(file_address + 'D' + str(cap_id) + '-' + str_Time + '.jpg', rgb_rot)
+# end_time = time.time()
+# time_mess += 'Show:' + str(round((end_time - start_time) * 1000, 4)) + 'ms\n'
+
+end_time_total = time.time()
+time_total = str(round((end_time_total - start_time_total) * 1000, 4)) + 'ms\n'
+time_mess += 'All:' + str(round((end_time_total - start_time_total) * 1000, 4)) + ';'
+# 显示数据
+# if cap_id == 0:
+#     print(str(int(ret_value[1])), str(int(ret_value[2])), 'F' + str(int(ret_value[3])), str(round(imu_yaw, 2)))
+# else:
+#     print(str(int(ret_value[2])), str(int(ret_value[1])), 'B' + str(int(ret_value[3])), str(round(imu_yaw, 2)))
+
+# # 保存txt
+# ret_mess += 'all:' + str(num_line) + ';hor:' + str(num_hor) + ';ver:' + str(num_ver)
+# ret_mess += ';Fro:' + str(round(dis_temp_f, 0)) + ';Lef:' + str(round(dis_temp_l, 0))
+# ret_mess += ';Rig:' + str(round(dis_temp_r, 0)) + ';Ult:' + str(ultra_value)
+# ret_mess += ';v_y:' + str(round(angle_set, 2)) + ';i_y:' + str(round(imu_yaw, 2))
+# ret_mess += ';Tim:' + str_Time + ';\n'
+#
+# time_mess += 'Tim:' + str_Time + ';\n'
+
+# file_rec = open(file_address + str(cap_id) + '.txt', 'a')
+# if len(ret_mess) > 0:
+#     file_rec.write('Tpy:Date;' + ret_mess)
+# # if len(err_mess) > 0:
+# #     file_rec.write('Error:\n' + err_mess)
+# if len(time_mess) > 0:
+#     file_rec.write('Tpy:Timer;' + time_mess)
+# file_rec.close()
 cv2.waitKey(0)
 
 cv2.destroyAllWindows()
