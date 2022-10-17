@@ -147,7 +147,7 @@ import JY61
 
 if __name__ == '__main__':
     # use raw_input function for python 2.x or input function for python3.x
-    ser = serial.Serial('/dev/ttyUSB0', 9600, timeout=0.02)  # ser = serial.Serial('com7',115200, timeout=0.5)
+    ser = serial.Serial('COM10', 9600, timeout=0.02)  # ser = serial.Serial('com7',115200, timeout=0.5)
     print(ser.is_open)
     while True:
         datahex = ser.read(33)

@@ -5,7 +5,7 @@ import datetime
 
 
 def ultra_rw():
-    se = serial.Serial('/dev/ttyUSB0', 9600, timeout=0.1)
+    se = serial.Serial('COM11', 9600, timeout=0.1)
     loop_num = 0
     while True:
         loop_num += 1
