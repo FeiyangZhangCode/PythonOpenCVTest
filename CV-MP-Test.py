@@ -17,7 +17,6 @@ import JY61
 import math
 import xlwt
 
-# se = serial.Serial('/dev/ttyTHS1', 9600, timeout=0.15)
 
 # 读取模型参数
 file_model = open('Model.txt', 'r', encoding='utf-8')
@@ -27,6 +26,12 @@ file_model.close()
 # 初始化Canny参数
 minCan = 40
 maxCan = 100
+
+# 前后单目、IMU串口、超声波串口编号
+front_id = 0
+back_id = 1
+ultra_com = 'COM12'
+imu_com = 'COM13'
 
 
 # 返回摄像头格式
@@ -70,12 +75,12 @@ def calc_w2x(flo_w, y, f, w, a, b, p_x):
 
 
 # 调用相机获取图片进行测距
-def distance_get(q_s, q_u, q_i, q_j, lock_ser, cap_id, file_address):
+def distance_get(q_s, q_f, q_l, q_r, q_u, q_i, lock_ser, cap_id, file_address):
     # 根据相机编号分配模型参数
     global para_lines
     global minCan, maxCan
 
-    if int(cap_id) == 0:
+    if int(cap_id) == front_id:
         model_F = float(para_lines[0].strip('\n'))
         model_W = float(para_lines[1].strip('\n'))
         model_a = float(para_lines[2].strip('\n'))
@@ -99,21 +104,24 @@ def distance_get(q_s, q_u, q_i, q_j, lock_ser, cap_id, file_address):
     cap.set(11, 80)
     cap.set(12, 80)
     # 获取视频帧率
-    print(get_camera_data(cap, cap_id))
+    # print(get_camera_data(cap, cap_id))
     if cap.isOpened():
-        print('Get1', cap_id)
+        # print('Get1', cap_id)
+        print('Camera ', cap_id, 'start')
     else:
         cap = cv2.VideoCapture(cap_id)
         cap.set(6, 1196444237)
         cap.set(3, 1920)
         cap.set(4, 1080)
         cap.set(5, 30)
-        print(get_camera_data(cap, cap_id))
-        print('Get2', cap_id)
+        # print(get_camera_data(cap, cap_id))
+        # print('Get2', cap_id)
+        print('Camera ', cap_id, 'start')
 
     # 循环处理图像
     loop_num = 0
     angle_set = 0.0
+    ultra_value = 0.0
 
     while cap.isOpened():
         start_time_total = time.time()
@@ -121,7 +129,6 @@ def distance_get(q_s, q_u, q_i, q_j, lock_ser, cap_id, file_address):
         loop_num += 1
         ret_mess = ''  # 数据信息
         time_mess = ''  # 时间信息
-        ret_value = [0.0] * 5  # 0是水平线，1是左垂线，2是右垂线，3是超声波，4是偏航角
 
         # 获取图像及参数
         start_time = time.time()
@@ -129,7 +136,7 @@ def distance_get(q_s, q_u, q_i, q_j, lock_ser, cap_id, file_address):
         if not ret:
             cap = cv2.VideoCapture(cap_id)
             ret, frame = cap.read()
-        if cap_id == 1:
+        if cap_id == back_id:
             rgb_frame = cv2.rotate(frame, cv2.ROTATE_180)
         else:
             rgb_frame = frame.copy()
@@ -138,6 +145,14 @@ def distance_get(q_s, q_u, q_i, q_j, lock_ser, cap_id, file_address):
         mid_height = int(img_height / 2)
         mid_width = int(img_width / 2)
         rgb_rot = rgb_frame.copy()
+        rgb_show = rgb_frame.copy()
+        # 获取偏航角
+        if not q_i.empty():
+            jy_list = q_i.get()
+            angle_set = jy_list[0]
+        # 获取超声波
+        if not q_u.empty():
+            ultra_value = q_u.get()
         end_time = time.time()
         time_mess += 'Cap:' + str(round((end_time - start_time) * 1000, 4)) + ';'
 
@@ -149,241 +164,236 @@ def distance_get(q_s, q_u, q_i, q_j, lock_ser, cap_id, file_address):
         end_time = time.time()
         time_mess += 'Can:' + str(round((end_time - start_time) * 1000, 4)) + ';'
 
-        # 截取下半部分
+        # 获取水平和垂直线
         start_time = time.time()
         gra_edge_rot = gra_edge.copy()
         gra_edge_rot[0:principal_y, :] = 0
-        end_time = time.time()
-        time_mess += 'Hal:' + str(round((end_time - start_time) * 1000, 4)) + ';'
-
-        # 获取水平和垂直线
-        start_time = time.time()
         lines = cv2.HoughLinesP(gra_edge_rot, rho=1.0, theta=np.pi / 180, threshold=100, minLineLength=100, maxLineGap=5)
         end_time = time.time()
         time_mess += 'Hou:' + str(round((end_time - start_time) * 1000, 4)) + ';'
 
-        # 获取偏航角
-        jy_yaw = 999.0
-        # gy_yaw = 999.0
-        # gy_tmp = 0.0
-
-        if not q_j.empty():
-            jy_list = q_j.get()
-            jy_yaw = jy_list[0]
-        # if not q_i.empty():
-        #     gy_list = q_i.get()
-        #     gy_yaw = gy_list[1]
-        #     gy_tmp = gy_list[0]
-        if jy_yaw != 999.0:
-            angle_set = jy_yaw
-        # elif gy_yaw != 999.0:
-        #     angle_set = gy_yaw
-        else:
-            angle_set = 0.0
-
-        ret_value[4] = round(angle_set, 2)
         # 旋转校正、拉平、融合
         start_time = time.time()
         num_line = 0
         num_ver = 0
         num_hor = 0
+        num_front = 0
+        num_left = 0
+        num_right = 0
         data_ver = np.zeros((0, 3), dtype=float)  # 垂直线数据，0是最接近中轴的w（x）值，1是最接近相机的h（y）值，2是最远离相机的h（y）值
         data_hor = np.zeros((0, 3), dtype=float)  # 水平线数据，0是最接近相机的h（y）值，1是最左侧（最小）的w（x）值，2是最右侧（最大）的w（x）值
+        dis_f = [0]
+        dis_l = [0]
+        dis_r = [0]
         try:
-            if len(lines) > 0:
-                for line in lines:
-                    for x1_p, y1_p, x2_p, y2_p in line:
-                        if getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 50.0:
-                            # 根据偏航角进行旋转
-                            h1 = CVFunc.calc_horizontal(y1_p, model_F, model_W, model_a, model_b)
-                            h2 = CVFunc.calc_horizontal(y2_p, model_F, model_W, model_a, model_b)
-                            w1 = CVFunc.calc_vertical((x1_p - principal_x), y1_p, model_F, model_W, model_a, model_b)
-                            w2 = CVFunc.calc_vertical((x2_p - principal_x), y2_p, model_F, model_W, model_a, model_b)
-                            # 在2米范围内
-                            if h1 < 2000 and h2 < 2000 and w1 < 2000 and w2 < 2000:
-                                num_line += 1
-                                x1_imu, y1_imu = points_rotate(angle_set, w1, h1)
-                                x2_imu, y2_imu = points_rotate(angle_set, w2, h2)
+            if type(lines) != 'NoneType':
+                if len(lines) > 0:
+                    for line in lines:
+                        for x1_p, y1_p, x2_p, y2_p in line:
+                            if getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 50.0:
+                                # 根据偏航角进行旋转
+                                h1 = CVFunc.calc_horizontal(y1_p, model_F, model_W, model_a, model_b)
+                                h2 = CVFunc.calc_horizontal(y2_p, model_F, model_W, model_a, model_b)
+                                w1 = CVFunc.calc_vertical((x1_p - principal_x), y1_p, model_F, model_W, model_a, model_b)
+                                w2 = CVFunc.calc_vertical((x2_p - principal_x), y2_p, model_F, model_W, model_a, model_b)
+                                # 在2米范围内
+                                if h1 < 2000 and h2 < 2000 and w1 < 2000 and w2 < 2000:
+                                    num_line += 1
+                                    x1_imu, y1_imu = points_rotate(angle_set, w1, h1)
+                                    x2_imu, y2_imu = points_rotate(angle_set, w2, h2)
 
-                                # 调整后处理不为水平线或者垂直线的线段，进行拉平拉直，小于±15认为是水平线，大于±75认为是垂直线
-                                if x1_imu != x2_imu and y1_imu != y2_imu:
-                                    temp_tan = np.arctan((y1_imu - y2_imu) / (x1_imu - x2_imu)) * 57.29577
-                                    if abs(temp_tan) <= 15:  # 判断是水平线,按照最接近相机来拉平
-                                        if abs(x1_imu) > abs(x2_imu):
-                                            y1_imu = y2_imu
-                                        else:
-                                            y2_imu = y1_imu
-                                    elif abs(temp_tan) >= 75:  # 判断是垂直线,按照最接近中轴来拉直
-                                        if abs(x1_imu) > abs(x2_imu):
-                                            x1_imu = x2_imu
-                                        else:
-                                            x2_imu = x1_imu
+                                    # 调整后处理不为水平线或者垂直线的线段，进行拉平拉直，小于±15认为是水平线，大于±75认为是垂直线
+                                    if x1_imu != x2_imu and y1_imu != y2_imu:
+                                        temp_tan = np.arctan((y1_imu - y2_imu) / (x1_imu - x2_imu)) * 57.29577
+                                        if abs(temp_tan) <= 15:  # 判断是水平线,按照最接近相机来拉平
+                                            if abs(x1_imu) > abs(x2_imu):
+                                                y1_imu = y2_imu
+                                            else:
+                                                y2_imu = y1_imu
+                                        elif abs(temp_tan) >= 75:  # 判断是垂直线,按照最接近中轴来拉直
+                                            if abs(x1_imu) > abs(x2_imu):
+                                                x1_imu = x2_imu
+                                            else:
+                                                x2_imu = x1_imu
 
-                                # 如果是同一条线，进行融合
-                                temp_show = ''
-                                if y1_imu == y2_imu:  # 水平线
-                                    num_hor += 1
-                                    temp_show = 'Y' + str(round(y1_imu, 0))
-                                    # 如果距离中轴的差值不超过50，则认为是同一条，按照最接近中轴的值进行融合。否则新增为新一条。
-                                    temp_left = min(x1_imu, x2_imu)
-                                    temp_right = max(x1_imu, x2_imu)
-                                    if len(data_hor) == 0:  # 第1条水平线，直接保存
-                                        data_hor = np.append(data_hor, [[y1_imu, temp_left, temp_right]], axis=0)
-                                    else:
-                                        new_hor = True
-                                        for values_hor in data_hor:
-                                            if abs(values_hor[0] - y1_imu) < 50:
-                                                if abs((values_hor[2] + values_hor[1]) / 2) > abs((temp_right + temp_left) / 2):
-                                                    values_hor[0] = y1_imu
-                                                values_hor[1] = min(values_hor[1], temp_left)
-                                                values_hor[2] = max(values_hor[2], temp_right)
-                                                new_hor = False
-                                                break
-                                        if new_hor:
+                                    # 如果是同一条线，进行融合
+                                    if y1_imu == y2_imu:  # 水平线
+                                        num_hor += 1
+                                        # 如果距离中轴的差值不超过50，则认为是同一条，按照最接近中轴的值进行融合。否则新增为新一条。
+                                        temp_left = min(x1_imu, x2_imu)
+                                        temp_right = max(x1_imu, x2_imu)
+                                        if len(data_hor) == 0:  # 第1条水平线，直接保存
                                             data_hor = np.append(data_hor, [[y1_imu, temp_left, temp_right]], axis=0)
-                                elif x1_imu == x2_imu:      # 垂直线
-                                    num_ver += 1
-                                    temp_show = 'X' + str(round(x1_imu, 0))
-                                    # 如果距离中轴的差值不超过50，则认为是同一条，按最接近中轴进行融合。否则新增为新一条。
-                                    temp_button = min(y1_imu, y2_imu)
-                                    temp_top = max(y1_imu, y2_imu)
-                                    if len(data_ver) == 0:
-                                        data_ver = np.append(data_ver, [[x1_imu, temp_button, temp_top]], axis=0)
-                                    else:
-                                        new_ver = True
-                                        for values_ver in data_ver:
-                                            if abs(values_ver[0] - x1_imu) < 50:
-                                                if abs(values_ver[0]) > abs(x1_imu):
-                                                    values_ver[0] = x1_imu
-                                                temp_v = min(values_ver[1], temp_button)
-                                                values_ver[1] = temp_v
-                                                temp_v = max(values_ver[2], temp_top)
-                                                values_ver[2] = temp_v
-                                                new_ver = False
-                                                break
-                                        if new_ver:
+                                        else:
+                                            new_hor = True
+                                            for values_hor in data_hor:
+                                                if abs(values_hor[0] - y1_imu) < 50:
+                                                    if abs((values_hor[2] + values_hor[1]) / 2) > abs((temp_right + temp_left) / 2):
+                                                        values_hor[0] = y1_imu
+                                                    values_hor[1] = min(values_hor[1], temp_left)
+                                                    values_hor[2] = max(values_hor[2], temp_right)
+                                                    new_hor = False
+                                                    break
+                                            if new_hor:
+                                                data_hor = np.append(data_hor, [[y1_imu, temp_left, temp_right]], axis=0)
+                                    elif x1_imu == x2_imu:      # 垂直线
+                                        num_ver += 1
+                                        # 如果距离中轴的差值不超过50，则认为是同一条，按最接近中轴进行融合。否则新增为新一条。
+                                        temp_button = min(y1_imu, y2_imu)
+                                        temp_top = max(y1_imu, y2_imu)
+                                        if len(data_ver) == 0:
                                             data_ver = np.append(data_ver, [[x1_imu, temp_button, temp_top]], axis=0)
+                                        else:
+                                            new_ver = True
+                                            for values_ver in data_ver:
+                                                if abs(values_ver[0] - x1_imu) < 50:
+                                                    if abs(values_ver[0]) > abs(x1_imu):
+                                                        values_ver[0] = x1_imu
+                                                    temp_v = min(values_ver[1], temp_button)
+                                                    values_ver[1] = temp_v
+                                                    temp_v = max(values_ver[2], temp_top)
+                                                    values_ver[2] = temp_v
+                                                    new_ver = False
+                                                    break
+                                            if new_ver:
+                                                data_ver = np.append(data_ver, [[x1_imu, temp_button, temp_top]], axis=0)
+                                    else:
+                                        pass
+                    end_time = time.time()
+                    time_mess += 'Rot:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+
+                    # 反推图像上的直线位置，找出最近的水平线和左右垂直线
+                    start_time = time.time()
+                    if len(data_hor) > 0:
+                        for values_hor in data_hor:
+                            w1_b, h1_b = points_rotate(-angle_set, values_hor[1], values_hor[0])
+                            w2_b, h2_b = points_rotate(-angle_set, values_hor[2], values_hor[0])
+                            y1_b = calc_h2y(h1_b, model_F, model_W, model_a, model_b)
+                            y2_b = calc_h2y(h2_b, model_F, model_W, model_a, model_b)
+                            x1_b = calc_w2x(w1_b, y1_b, model_F, model_W, model_a, model_b, principal_x)
+                            x2_b = calc_w2x(w2_b, y2_b, model_F, model_W, model_a, model_b, principal_x)
+                            x_mid = int((x1_b + x2_b) / 2)
+                            y_mid = int((y1_b + y2_b) / 2)
+                            cv2.line(rgb_rot, (x1_b, y1_b), (x2_b, y2_b), (255, 0, 0), 1)
+                            cv2.putText(rgb_rot, str(round(values_hor[0], 0)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                                        (255, 0, 0), 1)
+                            cv2.line(rgb_show, (x1_b, y1_b), (x2_b, y2_b), (255, 0, 0), 6)
+                            num_front += 1
+                            if dis_f[0] == 0:
+                                dis_f[0] = int(values_hor[0])
+                            else:
+                                dis_f.append(int(values_hor[0]))
+
+                    if len(data_ver) > 0:
+                        for values_ver in data_ver:
+                            w1_b, h1_b = points_rotate(-angle_set, values_ver[0], values_ver[1])
+                            w2_b, h2_b = points_rotate(-angle_set, values_ver[0], values_ver[2])
+                            y1_b = calc_h2y(h1_b, model_F, model_W, model_a, model_b)
+                            y2_b = calc_h2y(h2_b, model_F, model_W, model_a, model_b)
+                            x1_b = calc_w2x(w1_b, y1_b, model_F, model_W, model_a, model_b, principal_x)
+                            x2_b = calc_w2x(w2_b, y2_b, model_F, model_W, model_a, model_b, principal_x)
+                            x_mid = int((x1_b + x2_b) / 2)
+                            y_mid = int((y1_b + y2_b) / 2)
+                            cv2.line(rgb_rot, (x1_b, y1_b), (x2_b, y2_b), (0, 255, 255), 1)
+                            cv2.putText(rgb_rot, str(round(values_ver[0], 0)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                                        (0, 255, 255), 1)
+                            cv2.line(rgb_show, (x1_b, y1_b), (x2_b, y2_b), (0, 255, 255), 6)
+                            if values_ver[0] < 0:
+                                num_left += 1
+                                if dis_l[0] == 0:
+                                    dis_l[0] = int(abs(values_ver[0]))
                                 else:
-                                    temp_show = str(round(x1_imu, 0)) + ',' + str(round(y1_imu, 0)) + '\n' + str(
-                                        round(x2_imu, 0)) + ',' + str(round(y2_imu, 0))
-            end_time = time.time()
-            time_mess += 'Rot:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+                                    dis_l.append(int(abs(values_ver[0])))
+                            else:
+                                num_right += 1
+                                if dis_r[0] == 0:
+                                    dis_r[0] = int(values_ver[0])
+                                else:
+                                    dis_r.append(int(values_ver[0]))
+                    end_time = time.time()
+                    time_mess += 'Dra:' + str(round((end_time - start_time) * 1000, 4)) + ';'
 
-            # 反推图像上的直线位置，找出最近的水平线和左右垂直线
-            start_time = time.time()
-            dis_temp_f = 9999.0
-            dis_temp_r = 9999.0
-            dis_temp_l = -9999.0
-
-            if len(data_hor) > 0:
-                for values_hor in data_hor:
-                    w1_b, h1_b = points_rotate(-angle_set, values_hor[1], values_hor[0])
-                    w2_b, h2_b = points_rotate(-angle_set, values_hor[2], values_hor[0])
-                    y1_b = calc_h2y(h1_b, model_F, model_W, model_a, model_b)
-                    y2_b = calc_h2y(h2_b, model_F, model_W, model_a, model_b)
-                    x1_b = calc_w2x(w1_b, y1_b, model_F, model_W, model_a, model_b, principal_x)
-                    x2_b = calc_w2x(w2_b, y2_b, model_F, model_W, model_a, model_b, principal_x)
-                    x_mid = int((x1_b + x2_b) / 2)
-                    y_mid = int((y1_b + y2_b) / 2)
-                    cv2.line(rgb_rot, (x1_b, y1_b), (x2_b, y2_b), (255, 0, 0), 1)
-                    cv2.putText(rgb_rot, str(round(values_hor[0], 0)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                                (255, 0, 0), 1)
-                    if dis_temp_f > values_hor[0]:
-                        dis_temp_f = values_hor[0]
-            if len(data_ver) > 0:
-                for values_ver in data_ver:
-                    w1_b, h1_b = points_rotate(-angle_set, values_ver[0], values_ver[1])
-                    w2_b, h2_b = points_rotate(-angle_set, values_ver[0], values_ver[2])
-                    y1_b = calc_h2y(h1_b, model_F, model_W, model_a, model_b)
-                    y2_b = calc_h2y(h2_b, model_F, model_W, model_a, model_b)
-                    x1_b = calc_w2x(w1_b, y1_b, model_F, model_W, model_a, model_b, principal_x)
-                    x2_b = calc_w2x(w2_b, y2_b, model_F, model_W, model_a, model_b, principal_x)
-                    x_mid = int((x1_b + x2_b) / 2)
-                    y_mid = int((y1_b + y2_b) / 2)
-                    cv2.line(rgb_rot, (x1_b, y1_b), (x2_b, y2_b), (0, 0, 255), 1)
-                    cv2.putText(rgb_rot, str(round(values_ver[0], 0)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                                (0, 0, 255), 1)
-                    if values_ver[0] < 0:
-                        if abs(dis_temp_l) > abs(values_ver[0]):
-                            dis_temp_l = values_ver[0]
-                    else:
-                        if dis_temp_r > values_ver[0]:
-                            dis_temp_r = values_ver[0]
-            ret_value[0] = round(dis_temp_f, 0)
-            ret_value[1] = round((dis_temp_l * -1), 0)
-            ret_value[2] = round(dis_temp_r, 0)
-            end_time = time.time()
-            time_mess += 'Dra:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+            # if cap_id == front_id:
+            #     print('F', str(dis_f[0]), str(dis_l[0]), str(dis_r[0]))
+            # else:
+            #     print('B', str(dis_f[0]), str(dis_l[0]), str(dis_r[0]))
         except Exception as e:
             print(e)
+            print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
+            print(f"error line:{e.__traceback__.tb_lineno}")
 
-        # 画相机中心十字，读取超声数据，反推图像位置，画出水平线
+        # 画相机中心十字，反推超声波位置
         start_time = time.time()
         cv2.line(rgb_rot, (principal_x, 0), (principal_x, img_height), (255, 255, 0), 1)
         cv2.line(rgb_rot, (0, principal_y), (img_width, principal_y), (255, 255, 0), 1)
         cv2.circle(rgb_rot, (principal_x, principal_y), 5, (255, 255, 0), 3)
-
-        ultra_value = 0.0
-        if not q_u.empty():
-            ultra_value = q_u.get()
         if ultra_value > 0 and (ultra_value - model_b) != 0:
             height_ultra = int(((model_F * model_W) / ultra_value - model_b) / model_a)
             cv2.line(rgb_rot, (0, height_ultra), (img_width, height_ultra), (0, 255, 0), 1)
-            cv2.putText(rgb_rot, str(ultra_value), (mid_width, height_ultra), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                        (0, 255, 0), 1)
-        ret_value[3] = round(ultra_value, 0)
-        end_time = time.time()
-        time_mess += 'Ult:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+            cv2.putText(rgb_rot, str(ultra_value), (mid_width, height_ultra), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                        (128, 0, 128), 6)
+            cv2.line(rgb_show, (0, height_ultra), (img_width, height_ultra), (0, 255, 0), 1)
         # 显示及保存图片
-        start_time = time.time()
-        rgb_show = cv2.resize(rgb_rot, (960, 540))
-        cv2.imshow('Cap' + str(cap_id), rgb_show)
+        # rgb_show = cv2.resize(rgb_rot, (960, 540))
+        # cv2.imshow('Cap' + str(cap_id), rgb_show)
         # cv2.imwrite(file_address + 'C' + str(cap_id) + '-' + str_Time + '.jpg', rgb_frame)
         # cv2.imwrite(file_address + 'D' + str(cap_id) + '-' + str_Time + '.jpg', rgb_rot)
-        end_time = time.time()
-        time_mess += 'Shw:' + str(round((end_time - start_time) * 1000, 4)) + ';'
 
-        end_time_total = time.time()
-        # time_total = str(round((end_time_total - start_time_total) * 1000, 4)) + 'ms\n'
-        time_mess += 'All:' + str(round((end_time_total - start_time_total) * 1000, 4)) + ';\n'
-        # 显示数据
-        if cap_id == 0:
-            print('F', str(int(ret_value[1])), str(int(ret_value[2])), str(int(ret_value[3])), str(ret_value[4]))
-        else:
-            print('B', str(int(ret_value[2])), str(int(ret_value[1])), str(int(ret_value[3])), str(ret_value[4]))
-
-        # 保存txt
-        ret_mess += 'Tim:' + str_Time + ';all:' + str(num_line) + ';hor:' + str(num_hor) + ';ver:' + str(num_ver)
-        # ret_mess += ';Fro:' + str(ret_value[0]) + ';Lef:' + str(ret_value[1]) + ';Rig:' + str(ret_value[2])\
-        #             + ';Ult:' + str(ret_value[3]) + ';Yaw:' + str(ret_value[4]) + ';Tmp:' + str(gy_tmp)\
-        #             + ';iJY:' + str(jy_yaw) + ';iGY:' + str(gy_yaw) + ';\n'
-        ret_mess += ';Fro:' + str(ret_value[0]) + ';Lef:' + str(ret_value[1]) + ';Rig:' + str(ret_value[2])\
-                    + ';Ult:' + str(ret_value[3]) + ';Yaw:' + str(ret_value[4]) + ';\n'
-
+        # 保存txt，传输数据
+        q_s.put(rgb_show)
+        if q_s.qsize() > 1:
+            q_s.get()
+        ret_mess += 'Tim:' + str_Time + ';Ult:' + str(ultra_value) + ';Yaw:' + str(angle_set) + ';all:' + str(num_line)
+        ret_mess += ';frt:' + str(num_front) + ';lft:' + str(num_left) + ';rgt:' + str(num_right)
+        if dis_f[0] != 0:
+            dis_f.sort()
+            q_f.put(dis_f)
+            if q_f.qsize() > 1:
+                q_f.get()
+            for i in range(0, len(dis_f), 1):
+                ret_mess += ';f_' + str(i) + ':' + str(dis_f[i])
+        if dis_l[0] != 0:
+            dis_l.sort()
+            q_l.put(dis_l)
+            if q_l.qsize() > 1:
+                q_l.get()
+            for i in range(0, len(dis_l), 1):
+                ret_mess += ';l_' + str(i) + ':' + str(dis_l[i])
+        if dis_r[0] != 0:
+            dis_r.sort()
+            q_r.put(dis_r)
+            if q_r.qsize() > 1:
+                q_r.get()
+            for i in range(0, len(dis_r), 1):
+                ret_mess += ';r_' + str(i) + ':' + str(dis_r[i])
+        ret_mess += ';\n'
         file_rec = open(file_address + str(cap_id) + '.txt', 'a')
         if len(ret_mess) > 0:
             file_rec.write('Tpy:Date;' + ret_mess)
+
+        end_time = time.time()
+        time_mess += 'Shw:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+        end_time_total = time.time()
+        time_mess += 'All:' + str(round((end_time_total - start_time_total) * 1000, 4)) + ';\n'
+
         if len(time_mess) > 0:
             file_rec.write('Tpy:Timer;' + time_mess)
         file_rec.close()
-        cv2.waitKey(1)
-        q_s.put(ret_value)
-        if q_s.qsize() > 1:
-            q_s.get()
 
 
 # 读取超声波和IMU数据
-def sensor_get(q_u0, q_u1, q_i0, q_i1, q_j0, q_j1, lock_ser, file_address):
-    se_u = serial.Serial('COM11', 9600, timeout=0.02)
-    se_j = serial.Serial('COM10', 9600, timeout=0.02)
+def sensor_get(q_u0, q_u1, q_um, q_i0, q_i1, q_im, lock_ser, file_address):
+    se_u = serial.Serial(ultra_com, 9600, timeout=0.02)
+    se_i = serial.Serial(imu_com, 9600, timeout=0.02)
     is_u_send = True
 
     # 释放串口积攒的数据
     # cv2.waitKey(300)
     # release_mess = se_u.readline()
-    cv2.waitKey(300)
-    release_mess = se_j.readline()
+    # cv2.waitKey(300)
+    release_mess = se_i.readline()
 
+    print('Sensor start')
     while True:
         try:
             # 串口u发出超声波采样指令
@@ -391,34 +401,34 @@ def sensor_get(q_u0, q_u1, q_i0, q_i1, q_j0, q_j1, lock_ser, file_address):
                 se_u.write('1'.encode())
                 is_u_send = False
 
-            # I2C采集GY521的IMU数据
-            # cv2.waitKey(50)
-            # temp_out, rot_x, rot_y, sav_mess = MPU6050.get_imu_data()
-            # file_rec = open(file_address + 'MPU.txt', 'a')
-            # file_rec.write(sav_mess)
-            # file_rec.close()
-            # send_list = [round(temp_out, 2), round(rot_x, 2), round(rot_y, 2)]
-            # # print('GY521', str(round(rot_x, 2)))
-            # q_i0.put(send_list)
-            # q_i0.get() if q_i0.qsize() > 1 else time.sleep(0.005)
-            # q_i1.put(send_list)
-            # q_i1.get() if q_i1.qsize() > 1 else time.sleep(0.005)
-
             # 串口j采集JY61的IMU数据
-            datahex = se_j.read(33)
-            if datahex:
-                jy_list = JY61.DueData(datahex)
+            imu_rec = se_i.read(33)
+            if imu_rec:
+                str_imu = binascii.b2a_hex(imu_rec).decode()
                 file_rec = open(file_address + 'JY61.txt', 'a')
                 str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-                sav_mess = ("%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;\n" % jy_list)
+                if len(str_imu) == 66 and str_imu[0:4] == '5551':
+                    jy_list = JY61.DueData(imu_rec)
+                    if str(type(jy_list)) != "<class 'NoneType'>":
+                        sav_mess = ("normal;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;\n" % jy_list)
+                        send_list = [round(jy_list[6], 2), round(jy_list[7], 2), round(jy_list[8], 2)]
+                        # print(str(round(jy_list[6], 2)))
+                        q_i0.put(send_list)
+                        q_i0.get() if q_i0.qsize() > 1 else time.sleep(0.005)
+                        q_i1.put(send_list)
+                        q_i1.get() if q_i1.qsize() > 1 else time.sleep(0.005)
+                        q_im.put(send_list)
+                        q_im.get() if q_im.qsize() > 1 else time.sleep(0.005)
+                    else:
+                        sav_mess = ('NoneType;' + str_imu + ';\n')
+                        cv2.waitKey(50)
+                        release_mess = se_i.readline()
+                else:
+                    sav_mess = ('error;' + str_imu + ';\n')
+                    cv2.waitKey(50)
+                    release_mess = se_i.readline()
                 file_rec.write(str_time + ';' + sav_mess)
                 file_rec.close()
-                send_list = [round(jy_list[6], 2), round(jy_list[7], 2), round(jy_list[8], 2)]
-                # print(str(round(jy_list[6], 2)))
-                q_j0.put(send_list)
-                q_j0.get() if q_j0.qsize() > 1 else time.sleep(0.005)
-                q_j1.put(send_list)
-                q_j1.get() if q_j1.qsize() > 1 else time.sleep(0.005)
 
             # 串口u接收超声波数据
             ult_rec = se_u.readline()
@@ -433,23 +443,116 @@ def sensor_get(q_u0, q_u1, q_i0, q_i1, q_j0, q_j1, lock_ser, file_address):
                     s2 = str_ult[6:10]
                     u0 = int(s1, 16)
                     u1 = int(s2, 16)
+                    ultra_list = [u0, u1]
                     q_u0.put(u0)
-                    q_u1.put(u1)
                     q_u0.get() if q_u0.qsize() > 1 else time.sleep(0.005)
+                    q_u1.put(u1)
                     q_u1.get() if q_u1.qsize() > 1 else time.sleep(0.005)
-                    file_serial.write(str_time + ';' + str(str_ult) + ';' + str(u0) + ';' + str(u1) + ';\n')
+                    q_um.put(ultra_list)
+                    q_um.get() if q_um.qsize() > 1 else time.sleep(0.005)
+                    file_serial.write(str_time + ';normal;' + str(u0) + ';' + str(u1) + ';\n')
                     # print('Ultra', str(u0), str(u1))
                 else:
-                    file_serial.write(str_time + ';' + str(str_ult) + ';\n')
+                    file_serial.write(str_time + ';error;' + str(str_ult) + ';\n')
                 file_serial.close()
         except Exception as e:
             print(e)
+            print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
+            print(f"error line:{e.__traceback__.tb_lineno}")
         # finally:
         #     lock_ser.release()
 
 
+# 读取IMU数据
+def imu_get(q_i0, q_i1, q_im, lock_ser, file_address):
+    cv2.waitKey(500)
+    se_i = serial.Serial(imu_com, 9600, timeout=0.05)
+    # 释放串口积攒的数据
+    se_i.flushInput()
+    se_i.flushOutput()
+    print('IMU start')
+    while True:
+        try:
+            # 串口j采集JY61的IMU数据
+            # lock_ser.acquire()
+            imu_rec = se_i.read(33)
+            # lock_ser.release()
+            if imu_rec:
+                str_imu = binascii.b2a_hex(imu_rec).decode()
+                file_rec = open(file_address + 'JY61.txt', 'a')
+                str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+                if len(str_imu) == 66 and str_imu[0:4] == '5551':
+                    jy_list = JY61.DueData(imu_rec)
+                    if str(type(jy_list)) != "<class 'NoneType'>":
+                        sav_mess = (
+                                    "normal;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;\n" % jy_list)
+                        send_list = [round(jy_list[6], 2), round(jy_list[7], 2), round(jy_list[8], 2)]
+                        # print(str(round(jy_list[6], 2)))
+                        q_i0.put(send_list)
+                        q_i0.get() if q_i0.qsize() > 1 else time.sleep(0.005)
+                        q_i1.put(send_list)
+                        q_i1.get() if q_i1.qsize() > 1 else time.sleep(0.005)
+                        q_im.put(send_list)
+                        q_im.get() if q_im.qsize() > 1 else time.sleep(0.005)
+                    else:
+                        sav_mess = ('NoneType;' + str_imu + ';\n')
+                        se_i.flushOutput()
+                else:
+                    sav_mess = ('error;' + str_imu + ';\n')
+                    se_i.flushOutput()
+                file_rec.write(str_time + ';' + sav_mess)
+                file_rec.close()
+        except Exception as e:
+            print(e)
+            print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
+            print(f"error line:{e.__traceback__.tb_lineno}")
+
+
+# 读取超声波数据
+def ultra_get(q_u0, q_u1, q_um, lock_ser, file_address):
+    cv2.waitKey(1100)
+    se_u = serial.Serial(ultra_com, 9600, timeout=0.05)
+    is_u_send = True
+    print('Ultra start')
+    while True:
+        try:
+            # 串口u发出超声波采样指令
+            if is_u_send:
+                se_u.write('1'.encode())
+                cv2.waitKey(50)
+                is_u_send = False
+            # 串口u接收超声波数据
+            ult_rec = se_u.readline()
+            # lock_ser.acquire()
+            if ult_rec:
+                is_u_send = True
+                file_serial = open(file_address + 'Ultra.txt', 'a')
+                str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+                str_ult = binascii.b2a_hex(ult_rec).decode()
+                if str_ult[0:2] == 'ff' and len(str_ult) > 18:
+                    s1 = str_ult[2:6]
+                    s2 = str_ult[6:10]
+                    u0 = int(s1, 16)
+                    u1 = int(s2, 16)
+                    ultra_list = [u0, u1]
+                    q_u0.put(u0)
+                    q_u0.get() if q_u0.qsize() > 1 else time.sleep(0.005)
+                    q_u1.put(u1)
+                    q_u1.get() if q_u1.qsize() > 1 else time.sleep(0.005)
+                    q_um.put(ultra_list)
+                    q_um.get() if q_um.qsize() > 1 else time.sleep(0.005)
+                    file_serial.write(str_time + ';normal;' + str(u0) + ';' + str(u1) + ';\n')
+                    # print('Ultra', str(u0), str(u1))
+                else:
+                    file_serial.write(str_time + ';error;' + str(str_ult) + ';\n')
+                file_serial.close()
+        except Exception as e:
+            print(e)
+            print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
+            print(f"error line:{e.__traceback__.tb_lineno}")
+
 # 根据图像调整Canny参数
-def cali_init():
+def camera_init():
     global para_lines
     global minCan, maxCan
 
@@ -461,7 +564,7 @@ def cali_init():
     principal_y = int(para_lines[5].strip('\n'))
 
     # 尝试连接相机
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(front_id)
     cap.set(6, 1196444237)
     cap.set(3, 1920)
     cap.set(4, 1080)
@@ -469,7 +572,7 @@ def cali_init():
     cap.set(11, 80)
     cap.set(12, 80)
     if not cap.isOpened():
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(front_id)
         cap.set(6, 1196444237)
         cap.set(3, 1920)
         cap.set(4, 1080)
@@ -690,6 +793,8 @@ def cali_init():
 
                 except Exception as e:
                     print(e)
+                    print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
+                    print(f"error line:{e.__traceback__.tb_lineno}")
 
                 # 画相机中心十字，读取超声数据，反推图像位置，画出水平线
                 start_time = time.time()
@@ -738,59 +843,209 @@ def cali_init():
             maxCan = temp_maxCan
             return temp_minCan, temp_maxCan
 
+
 # 融合前后单目、超声和IMU，快速更新四向和偏航角
-# def perception_fusion(q_c0, q_c1, q_u, q_i, q_p, lock_ser, file_address):
-#     ultra_front = 0
-#     ultra_back = 0
-#     ultra_time = ''
-#     imu_yaw = 0.0
-#     imu_pitch = 0.0
-#     imu_temp = 0.0
-#     imu_time = ''
-#     c0_front = 0.0
-#     c0_left = 0.0
-#     c0_right = 0.0
-#     c0_yaw = 0.0
-#     c1_back = 0.0
-#     c1_left = 0.0
-#     c1_right = 0.0
-#     c1_yaw = 0.0
-#
-#     while True:
-#         has_c0 = not q_c0.empty()
-#         has_c1 = not q_c1.empty()
-#         has_ultra = not q_u.empty()
-#         has_imu = not q_i.empty()
-#
-#         # 有新IMU，直接录入
-#         if has_imu:
-#             imu_list = q_i.get()
-#             imu_time = imu_list[0]
-#             imu_temp = imu_list[1]
-#             imu_yaw = imu_list[2]
-#             imu_pitch = imu_list[3]
-#
-#         # 有新超声波，直接录入
-#         if has_ultra:
-#             ultra_list = q_u.get()
-#             ultra_time = ultra_list[0]
-#             ultra_front = ultra_list[1]
-#             ultra_back = ultra_list[2]
-#
-#         # 有新相机0，判断情况
-#         if has_c0:
-#             c0_list = q_c0.get()
-#             new_front = c0_list[0]
-#             new_left = c0_list[1]
-#             new_right = c0_list[2]
-#
-#             # 首轮执行，直接录入数据
-#             if c0_left == c0_right == c0_front == 0.0:
-#                 c0_front = new_front
-#                 c0_left = new_left
-#                 c0_right = new_right
-#                 c0_yaw = c0_list[4]
-#             else:
+def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_u, q_i, file_address):
+    imu_yaw = 0.0
+    ultra_front = 0
+    ultra_back = 0
+
+    cam_front = 0
+    cam_back = 0
+    cam_left_f = 0
+    cam_left_b = 0
+    cam_right_f = 0
+    cam_right_b = 0
+
+    dis_f = [0]
+    dis_lf = [0]
+    dis_rf = [0]
+    dis_b = [0]
+    dis_lb = [0]
+    dis_rb = [0]
+
+    rgb_c0 = np.zeros((540, 960, 3), np.uint8)
+    rgb_c1 = np.zeros((540, 960, 3), np.uint8)
+
+    start_time = time.time()
+    end_time = time.time()
+    time_mess = round((end_time - start_time) * 1000, 4)
+
+    while True:
+        str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+        # 收到数据标志位
+        is_imu = False
+        is_ultra = False
+        is_c0 = False
+        is_c1 = False
+        is_f = False
+        is_lf = False
+        is_rf = False
+        is_b = False
+        is_lb = False
+        is_rb = False
+
+        # 超声波
+        if not q_u.empty():
+            is_ultra = True
+            ultra_list = q_u.get()
+            ultra_front = ultra_list[0]
+            ultra_back = ultra_list[1]
+
+        # IMU
+        if not q_i.empty():
+            is_imu = True
+            imu_list = q_i.get()
+            imu_yaw = imu_list[0]
+
+        # 前向图像
+        if not q_s0.empty():
+            is_c0 = True
+            rgb_c0 = q_s0.get()
+
+        # 后向图像
+        if not q_s1.empty():
+            is_c1 = True
+            rgb_c1 = q_s1.get()
+
+        # 前向水平线
+        if not q_f.empty():
+            is_f = True
+            dis_f = q_f.get()
+            cam_front = dis_f[0]
+
+        # 前向左垂线
+        if not q_lf.empty():
+            is_lf = True
+            dis_lf = q_lf.get()
+            cam_left_f = dis_lf[0]
+
+        # 前向右垂线
+        if not q_rf.empty():
+            is_rf = True
+            dis_rf = q_rf.get()
+            cam_right_f = dis_rf[0]
+
+        # 后向水平线
+        if not q_b.empty():
+            is_b = True
+            dis_b = q_b.get()
+            cam_back = dis_b[0]
+
+        # 后向左垂线
+        if not q_lb.empty():
+            is_lb = True
+            dis_lb = q_lb.get()
+            cam_left_b = dis_lb[0]
+
+        # 后向右垂线
+        if not q_rb.empty():
+            is_rb = True
+            dis_rb = q_rb.get()
+            cam_right_b = dis_rb[0]
+
+        # 如果前后单目的任意一个完成处理，则更新显示
+        if is_c0 or is_c1:
+            end_time = time.time()
+            time_mess = round((end_time - start_time) * 1000, 4)
+
+            show_width = 640
+            show_height = 360
+            half_width = int(show_width / 2)
+            half_height = int(show_height / 2)
+            # 调整原图尺寸便于在左上和右上展示
+            rgb_show_0 = cv2.resize(rgb_c0, (show_width, show_height))
+            rgb_show_1 = cv2.resize(rgb_c1, (show_width, show_height))
+
+            # 左下的距离展示区
+            rgb_show_line = np.zeros((show_height, show_width, 3), np.uint8)
+            if dis_f[0] != 0:
+                for i in range(0, len(dis_f), 1):
+                    temp_y = int(half_height - (half_height * dis_f[i] / 2000))
+                    cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (255, 0, 0), 1)
+            if dis_b[0] != 0:
+                for i in range(0, len(dis_b), 1):
+                    temp_y = int(half_height + (half_height * dis_b[i] / 2000))
+                    cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (255, 0, 0), 1)
+            if dis_lf[0] != 0:
+                for i in range(0, len(dis_lf), 1):
+                    temp_x = int(half_width - (half_width * dis_lf[i] / 2000))
+                    cv2.line(rgb_show_line, (temp_x, 0), (temp_x, half_height), (255, 0, 0), 1)
+            if dis_lb[0] != 0:
+                for i in range(0, len(dis_lb), 1):
+                    temp_x = int(half_width - (half_width * dis_lb[i] / 2000))
+                    cv2.line(rgb_show_line, (temp_x, half_height), (temp_x, show_height), (255, 0, 0), 1)
+            if dis_rf[0] != 0:
+                for i in range(0, len(dis_rf), 1):
+                    temp_x = int(half_width + (half_width * dis_rf[i] / 2000))
+                    cv2.line(rgb_show_line, (temp_x, 0), (temp_x, half_height), (255, 0, 0), 1)
+            if dis_rb[0] != 0:
+                for i in range(0, len(dis_rb), 1):
+                    temp_x = int(half_width + (half_width * dis_rb[i] / 2000))
+                    cv2.line(rgb_show_line, (temp_x, half_height), (temp_x, show_height), (255, 0, 0), 1)
+            if 0 < ultra_front < 2000:
+                temp_y = int(half_height - (half_height * ultra_front / 2000))
+                cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (0, 0, 255), 1)
+            elif ultra_front >= 2000:
+                temp_y = 0
+                cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (0, 0, 255), 1)
+            if 0 < ultra_back < 2000:
+                temp_y = int(half_height + (half_height * ultra_back / 2000))
+                cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (0, 0, 255), 1)
+            elif ultra_back >= 2000:
+                temp_y = show_height
+                cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (0, 0, 255), 1)
+            cv2.line(rgb_show_line, (0, half_height), (show_width, half_height), (0, 255, 255), 1)
+            cv2.line(rgb_show_line, (half_width, 0), (half_width, show_height), (0, 255, 255), 1)
+            cv2.rectangle(rgb_show_line, (half_width - 1, half_height - 1), (half_width + 1, half_height + 1), (0, 255, 255), 1)
+
+            # 右下的数据展示区
+            rgb_show_data = np.zeros((show_height, show_width, 3), np.uint8)
+            str_0 = str_Time + '    ' + str(time_mess) + ' ms'
+            str_1 = 'Yaw:' + str(imu_yaw) + '  UF:' + str(ultra_front) + '  UB:' + str(ultra_back)
+            str_2 = 'L:' + str(cam_left_f) + '-' + str(cam_left_b) + '  R:' + str(cam_right_f) + '-' + str(cam_right_b)
+            str_2 += '  F:' + str(cam_front) + '  B:' + str(cam_back)
+            str_3 = ''
+            if is_f:
+                str_3 += 'nF:' + str(len(dis_f))
+            else:
+                str_3 += 'nF:0'
+            if is_lf:
+                str_3 += '  nLF:' + str(len(dis_lf))
+            else:
+                str_3 += '  nLF:0'
+            if is_rf:
+                str_3 += '  nRF:' + str(len(dis_rf))
+            else:
+                str_3 += '  nRF:0'
+            if is_b:
+                str_3 += '  nB:' + str(len(dis_b))
+            else:
+                str_3 += '  nB:0'
+            if is_lb:
+                str_3 += '  nLB:' + str(len(dis_lb))
+            else:
+                str_3 += '  nLB:0'
+            if is_rb:
+                str_3 += '  nRB:' + str(len(dis_rb))
+            else:
+                str_3 += '  nRB:0'
+            cv2.putText(rgb_show_data, str_0, (0, int(show_height / 4)), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 1)
+            cv2.putText(rgb_show_data, str_1, (0, int(show_height / 2)), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 1)
+            cv2.putText(rgb_show_data, str_2, (0, int(show_height * 3 / 4)), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 1)
+            cv2.putText(rgb_show_data, str_3, (0, show_height), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 1)
+
+            # 4图拼接
+            rgb_mix = np.zeros(((show_height * 2), (show_width * 2), 3), np.uint8)
+            rgb_mix[0:show_height, 0:show_width] = rgb_show_0
+            rgb_mix[0:show_height, show_width:(show_width * 2)] = rgb_show_1
+            rgb_mix[show_height:(show_height * 2), 0:show_width] = rgb_show_line
+            rgb_mix[show_height:(show_height * 2), show_width:(show_width * 2)] = rgb_show_data
+            cv2.imshow('Show', rgb_mix)
+
+            start_time = time.time()
+
+        cv2.waitKey(1)
 
 
 
@@ -814,22 +1069,34 @@ def run_multi_camera():
     processes = []
     lock = mp.Lock()
     queue_s0 = mp.Queue(maxsize=2)
+    queue_front_0 = mp.Queue(maxsize=2)
+    queue_left_0 = mp.Queue(maxsize=2)
+    queue_right_0 = mp.Queue(maxsize=2)
+    queue_back_1 = mp.Queue(maxsize=2)
+    queue_left_1 = mp.Queue(maxsize=2)
+    queue_right_1 = mp.Queue(maxsize=2)
+
     queue_s1 = mp.Queue(maxsize=2)
     queue_ultra_0 = mp.Queue(maxsize=2)
     queue_ultra_1 = mp.Queue(maxsize=2)
+    queue_ultra_main = mp.Queue(maxsize=2)
     queue_imu_0 = mp.Queue(maxsize=2)
     queue_imu_1 = mp.Queue(maxsize=2)
-
-    queue_JY61_0 = mp.Queue(maxsize=2)
-    queue_JY61_1 = mp.Queue(maxsize=2)
+    queue_imu_main = mp.Queue(maxsize=2)
 
     processes.append(
-        mp.Process(target=distance_get, args=(queue_s0, queue_ultra_0, queue_imu_0, queue_JY61_0, lock, 0, str_fileAddress)))
+        mp.Process(target=distance_get, args=(queue_s0, queue_front_0, queue_left_0, queue_right_0, queue_ultra_0, queue_imu_0, lock, front_id, str_fileAddress)))
     processes.append(
-        mp.Process(target=distance_get, args=(queue_s1, queue_ultra_1, queue_imu_1, queue_JY61_1, lock, 1, str_fileAddress)))
+        mp.Process(target=distance_get, args=(queue_s1, queue_back_1, queue_right_1, queue_left_1, queue_ultra_1, queue_imu_1, lock, back_id, str_fileAddress)))
+    # processes.append(
+    #     mp.Process(target=sensor_get, args=(queue_ultra_0, queue_ultra_1, queue_ultra_main, queue_imu_0, queue_imu_1, queue_imu_main, lock, str_fileAddress)))
+    processes.append(
+        mp.Process(target=multi_calc, args=(queue_s0, queue_s1, queue_front_0, queue_back_1, queue_left_0, queue_right_0, queue_left_1, queue_right_1, queue_ultra_main, queue_imu_main, str_fileAddress)))
+    processes.append(
+        mp.Process(target=imu_get, args=(queue_imu_0, queue_imu_1, queue_imu_main, lock, str_fileAddress)))
+    processes.append(
+        mp.Process(target=ultra_get, args=(queue_ultra_0, queue_ultra_1, queue_ultra_main,lock, str_fileAddress)))
 
-    processes.append(
-        mp.Process(target=sensor_get, args=(queue_ultra_0, queue_ultra_1, queue_imu_0, queue_imu_1, queue_JY61_0, queue_JY61_1, lock, str_fileAddress)))
 
     for process in processes:
         process.daemon = True
@@ -840,14 +1107,15 @@ def run_multi_camera():
 
 if __name__ == '__main__':
 
-    cali_type = input('参数校准模式（0：自动，1：手动，2：默认）：')
-    if cali_type == '0':
-        minCan, maxCan = cali_init()
-    elif cali_type == '1':
-        minCan = int(input('minCan:'))
-        maxCan = int(input('maxCan:'))
-    else:
-        minCan = 40
-        maxCan = 100
+    # cali_type = input('参数校准模式（0：自动，1：手动，2：默认）：')
+    # if cali_type == '0':
+    #     minCan, maxCan = camera_init()
+    #     # pass
+    # elif cali_type == '1':
+    #     minCan = int(input('minCan:'))
+    #     maxCan = int(input('maxCan:'))
+    # else:
+    #     minCan = 40
+    #     maxCan = 100
 
     run_multi_camera()  # 调用主函数

@@ -1,6 +1,8 @@
 import datetime
 import serial
 import JY61
+import binascii
+import time
 
 # ACCData = [0.0] * 8
 # GYROData = [0.0] * 8
@@ -147,13 +149,33 @@ import JY61
 
 if __name__ == '__main__':
     # use raw_input function for python 2.x or input function for python3.x
-    ser = serial.Serial('COM10', 9600, timeout=0.02)  # ser = serial.Serial('com7',115200, timeout=0.5)
+    ser = serial.Serial('COM13', 9600, timeout=0.02)  # ser = serial.Serial('com7',115200, timeout=0.5)
     print(ser.is_open)
     while True:
+        time_mess = ''
+        # start_time = time.time()
+        # if not ser.is_open:
+        #     ser.open()
+        # end_time = time.time()
+        # time_mess += 'Open:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+
+        # start_time = time.time()
         datahex = ser.read(33)
         if datahex:
-            get_mess = JY61.DueData(datahex)
-            str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-            print(str_time)
-            print(get_mess[6], get_mess[7])
+            # print(datahex)
+            str_rec = binascii.b2a_hex(datahex).decode()
+            if len(str_rec) == 66 and str_rec[0:4] == '5551':
+                # print(str_rec[0:4])
+                get_mess = JY61.DueData(datahex)
+                str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+                # print(str_time)
+                print(get_mess[6], get_mess[7])
+        # end_time = time.time()
+        # time_mess += 'Read:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+
+        # start_time = time.time()
+        # ser.close()
+        # end_time = time.time()
+        # time_mess += 'Close:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+        print(time_mess)
 
