@@ -5,14 +5,14 @@ import cv2
 import datetime
 import multiprocessing as mp
 import os
-import INA219
-import MPU6050
+# import INA219
+# import MPU6050
 import JY61
 
 
 # 串口读取JY61的IMU数据
 def imu_JY61_get(q_ij, lock_ser, file_address):
-    se_ij = serial.Serial('/dev/ttyUSB0', 9600, timeout=0.02)
+    se_ij = serial.Serial('COM13', 9600, timeout=0.02)
     while True:
         datahex = se_ij.read(33)
         if datahex:
@@ -29,7 +29,7 @@ def imu_JY61_get(q_ij, lock_ser, file_address):
 
 # 串口读取超声数据
 def ultra_get(q_u, lock_ser, file_address):
-    se_u = serial.Serial('/dev/ttyTHS1', 9600, timeout=0.1)
+    se_u = serial.Serial('COM12', 9600, timeout=0.1)
     while True:
         try:
             se_u.write('1'.encode())
@@ -88,14 +88,14 @@ def autocontrol_run(q_u, q_ig, q_ij, lock_ser, file_address):
         imu1_state = 'old'
         imu2_state = 'old'
         ultra_state = 'old'
-        # 获取GY521偏航角
-        if not q_ig.empty():
-            imu1_list = q_ig.get()
-            imu1_time = imu1_list[0]
-            imu1_temp = imu1_list[1]
-            imu1_yaw = imu1_list[2]
-            imu1_pitch = imu1_list[3]
-            imu1_state = 'new'
+        # # 获取GY521偏航角
+        # if not q_ig.empty():
+        #     imu1_list = q_ig.get()
+        #     imu1_time = imu1_list[0]
+        #     imu1_temp = imu1_list[1]
+        #     imu1_yaw = imu1_list[2]
+        #     imu1_pitch = imu1_list[3]
+        #     imu1_state = 'new'
         # 获取JY61偏航角
         if not q_ij.empty():
             imu2_list = q_ij.get()
@@ -115,13 +115,15 @@ def autocontrol_run(q_u, q_ig, q_ij, lock_ser, file_address):
         str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
         save_mess = str_time + ';' + ultra_state + ';' + ultra_time + ';' + str(ultra_front) + ';' + str(
             ultra_back) + ';'
-        save_mess += imu1_state + ';' + imu1_time + ';' + str(imu1_temp) + ';' + str(imu1_yaw) + ';' + str(
-            imu1_pitch) + ';'
+        # save_mess += imu1_state + ';' + imu1_time + ';' + str(imu1_temp) + ';' + str(imu1_yaw) + ';' + str(
+        #     imu1_pitch) + ';'
         save_mess += imu2_state + ';' + imu2_time + ';' + str(imu2_yaw) + ';' + str(imu2_pitch) + ';' + str(
             imu2_roll) + ';\n'
         file_rec.write(save_mess)
         file_rec.close()
-        print(ultra_front, ultra_back, imu1_yaw, imu2_yaw)
+        # print(ultra_front, ultra_back, imu1_yaw, imu2_yaw)
+        print(ultra_front, ultra_back, imu2_yaw)
+
 
 
 if __name__ == '__main__':
@@ -142,7 +144,7 @@ if __name__ == '__main__':
     queue_jy61 = mp.Queue(maxsize=2)
 
     processes.append(mp.Process(target=ultra_get, args=(queue_ultra, lock, str_fileAddress)))
-    processes.append(mp.Process(target=imu_GY521_get, args=(queue_gy521, lock, str_fileAddress)))
+    # processes.append(mp.Process(target=imu_GY521_get, args=(queue_gy521, lock, str_fileAddress)))
     processes.append(mp.Process(target=imu_JY61_get, args=(queue_jy61, lock, str_fileAddress)))
     processes.append(
         mp.Process(target=autocontrol_run, args=(queue_ultra, queue_gy521, queue_jy61, lock, str_fileAddress)))

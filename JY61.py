@@ -1,22 +1,33 @@
-ACCData = [0.0] * 8
-GYROData = [0.0] * 8
-AngleData = [0.0] * 8
-FrameState = 0  # 通过0x后面的值判断属于哪一种情况
-Bytenum = 0  # 读取到这一段的第几位
-CheckSum = 0  # 求和校验位
-
-a = [0.0] * 3
-w = [0.0] * 3
-Angle = [0.0] * 3
+# ACCData = [0.0] * 8
+# GYROData = [0.0] * 8
+# AngleData = [0.0] * 8
+# FrameState = 0  # 通过0x后面的值判断属于哪一种情况
+# Bytenum = 0  # 读取到这一段的第几位
+# CheckSum = 0  # 求和校验位
+#
+# a = [0.0] * 3
+# w = [0.0] * 3
+# Angle = [0.0] * 3
 
 
 def DueData(inputdata):  # 新增的核心程序，对读取的数据进行划分，各自读到对应的数组里
-    global FrameState  # 在局部修改全局变量，要进行global的定义
-    global Bytenum
-    global CheckSum
-    global a
-    global w
-    global Angle
+    # global FrameState  # 在局部修改全局变量，要进行global的定义
+    # global Bytenum
+    # global CheckSum
+    # global a
+    # global w
+    # global Angle
+
+    ACCData = [0.0] * 8
+    GYROData = [0.0] * 8
+    AngleData = [0.0] * 8
+    FrameState = 0  # 通过0x后面的值判断属于哪一种情况
+    Bytenum = 0  # 读取到这一段的第几位
+    CheckSum = 0  # 求和校验位
+
+    a = [0.0] * 3
+    w = [0.0] * 3
+    Angle = [0.0] * 3
 
     ret_mess = ''
 

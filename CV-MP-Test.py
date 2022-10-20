@@ -30,8 +30,7 @@ maxCan = 100
 # 前后单目、IMU串口、超声波串口编号
 front_id = 0
 back_id = 1
-ultra_com = 'COM12'
-imu_com = 'COM13'
+imu_com = 'COM14'
 
 
 # 返回摄像头格式
@@ -75,7 +74,7 @@ def calc_w2x(flo_w, y, f, w, a, b, p_x):
 
 
 # 调用相机获取图片进行测距
-def distance_get(q_s, q_f, q_l, q_r, q_u, q_i, lock_ser, cap_id, file_address):
+def distance_get(q_s, q_f, q_l, q_r, q_i, lock_ser, cap_id, file_address):
     # 根据相机编号分配模型参数
     global para_lines
     global minCan, maxCan
@@ -103,10 +102,7 @@ def distance_get(q_s, q_f, q_l, q_r, q_u, q_i, lock_ser, cap_id, file_address):
     cap.set(5, 30)
     cap.set(11, 80)
     cap.set(12, 80)
-    # 获取视频帧率
-    # print(get_camera_data(cap, cap_id))
     if cap.isOpened():
-        # print('Get1', cap_id)
         print('Camera ', cap_id, 'start')
     else:
         cap = cv2.VideoCapture(cap_id)
@@ -114,14 +110,11 @@ def distance_get(q_s, q_f, q_l, q_r, q_u, q_i, lock_ser, cap_id, file_address):
         cap.set(3, 1920)
         cap.set(4, 1080)
         cap.set(5, 30)
-        # print(get_camera_data(cap, cap_id))
-        # print('Get2', cap_id)
         print('Camera ', cap_id, 'start')
 
     # 循环处理图像
     loop_num = 0
     angle_set = 0.0
-    ultra_value = 0.0
 
     while cap.isOpened():
         start_time_total = time.time()
@@ -150,9 +143,6 @@ def distance_get(q_s, q_f, q_l, q_r, q_u, q_i, lock_ser, cap_id, file_address):
         if not q_i.empty():
             jy_list = q_i.get()
             angle_set = jy_list[0]
-        # 获取超声波
-        if not q_u.empty():
-            ultra_value = q_u.get()
         end_time = time.time()
         time_mess += 'Cap:' + str(round((end_time - start_time) * 1000, 4)) + ';'
 
@@ -186,7 +176,7 @@ def distance_get(q_s, q_f, q_l, q_r, q_u, q_i, lock_ser, cap_id, file_address):
         dis_l = [0]
         dis_r = [0]
         try:
-            if type(lines) != 'NoneType':
+            if str(type(lines)) != "<class 'NoneType'>":
                 if len(lines) > 0:
                     for line in lines:
                         for x1_p, y1_p, x2_p, y2_p in line:
@@ -322,17 +312,11 @@ def distance_get(q_s, q_f, q_l, q_r, q_u, q_i, lock_ser, cap_id, file_address):
             print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
             print(f"error line:{e.__traceback__.tb_lineno}")
 
-        # 画相机中心十字，反推超声波位置
+        # 画相机中心十字
         start_time = time.time()
         cv2.line(rgb_rot, (principal_x, 0), (principal_x, img_height), (255, 255, 0), 1)
         cv2.line(rgb_rot, (0, principal_y), (img_width, principal_y), (255, 255, 0), 1)
         cv2.circle(rgb_rot, (principal_x, principal_y), 5, (255, 255, 0), 3)
-        if ultra_value > 0 and (ultra_value - model_b) != 0:
-            height_ultra = int(((model_F * model_W) / ultra_value - model_b) / model_a)
-            cv2.line(rgb_rot, (0, height_ultra), (img_width, height_ultra), (0, 255, 0), 1)
-            cv2.putText(rgb_rot, str(ultra_value), (mid_width, height_ultra), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
-                        (128, 0, 128), 6)
-            cv2.line(rgb_show, (0, height_ultra), (img_width, height_ultra), (0, 255, 0), 1)
         # 显示及保存图片
         # rgb_show = cv2.resize(rgb_rot, (960, 540))
         # cv2.imshow('Cap' + str(cap_id), rgb_show)
@@ -343,7 +327,7 @@ def distance_get(q_s, q_f, q_l, q_r, q_u, q_i, lock_ser, cap_id, file_address):
         q_s.put(rgb_show)
         if q_s.qsize() > 1:
             q_s.get()
-        ret_mess += 'Tim:' + str_Time + ';Ult:' + str(ultra_value) + ';Yaw:' + str(angle_set) + ';all:' + str(num_line)
+        ret_mess += 'Tim:' + str_Time + ';Yaw:' + str(angle_set) + ';all:' + str(num_line)
         ret_mess += ';frt:' + str(num_front) + ';lft:' + str(num_left) + ';rgt:' + str(num_right)
         if dis_f[0] != 0:
             dis_f.sort()
@@ -550,6 +534,7 @@ def ultra_get(q_u0, q_u1, q_um, lock_ser, file_address):
             print(e)
             print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
             print(f"error line:{e.__traceback__.tb_lineno}")
+
 
 # 根据图像调整Canny参数
 def camera_init():
@@ -845,10 +830,10 @@ def camera_init():
 
 
 # 融合前后单目、超声和IMU，快速更新四向和偏航角
-def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_u, q_i, file_address):
+def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_i, file_address):
+    cv2.waitKey(2000)
+
     imu_yaw = 0.0
-    ultra_front = 0
-    ultra_back = 0
 
     cam_front = 0
     cam_back = 0
@@ -869,13 +854,12 @@ def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_u, q_i, file_addr
 
     start_time = time.time()
     end_time = time.time()
-    time_mess = round((end_time - start_time) * 1000, 4)
+    time_mess = round((end_time - start_time) * 1000, 2)
 
     while True:
         str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
         # 收到数据标志位
         is_imu = False
-        is_ultra = False
         is_c0 = False
         is_c1 = False
         is_f = False
@@ -884,13 +868,6 @@ def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_u, q_i, file_addr
         is_b = False
         is_lb = False
         is_rb = False
-
-        # 超声波
-        if not q_u.empty():
-            is_ultra = True
-            ultra_list = q_u.get()
-            ultra_front = ultra_list[0]
-            ultra_back = ultra_list[1]
 
         # IMU
         if not q_i.empty():
@@ -983,18 +960,6 @@ def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_u, q_i, file_addr
                 for i in range(0, len(dis_rb), 1):
                     temp_x = int(half_width + (half_width * dis_rb[i] / 2000))
                     cv2.line(rgb_show_line, (temp_x, half_height), (temp_x, show_height), (255, 0, 0), 1)
-            if 0 < ultra_front < 2000:
-                temp_y = int(half_height - (half_height * ultra_front / 2000))
-                cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (0, 0, 255), 1)
-            elif ultra_front >= 2000:
-                temp_y = 0
-                cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (0, 0, 255), 1)
-            if 0 < ultra_back < 2000:
-                temp_y = int(half_height + (half_height * ultra_back / 2000))
-                cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (0, 0, 255), 1)
-            elif ultra_back >= 2000:
-                temp_y = show_height
-                cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (0, 0, 255), 1)
             cv2.line(rgb_show_line, (0, half_height), (show_width, half_height), (0, 255, 255), 1)
             cv2.line(rgb_show_line, (half_width, 0), (half_width, show_height), (0, 255, 255), 1)
             cv2.rectangle(rgb_show_line, (half_width - 1, half_height - 1), (half_width + 1, half_height + 1), (0, 255, 255), 1)
@@ -1002,7 +967,7 @@ def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_u, q_i, file_addr
             # 右下的数据展示区
             rgb_show_data = np.zeros((show_height, show_width, 3), np.uint8)
             str_0 = str_Time + '    ' + str(time_mess) + ' ms'
-            str_1 = 'Yaw:' + str(imu_yaw) + '  UF:' + str(ultra_front) + '  UB:' + str(ultra_back)
+            str_1 = 'Yaw:' + str(imu_yaw)
             str_2 = 'L:' + str(cam_left_f) + '-' + str(cam_left_b) + '  R:' + str(cam_right_f) + '-' + str(cam_right_b)
             str_2 += '  F:' + str(cam_front) + '  B:' + str(cam_back)
             str_3 = ''
@@ -1048,7 +1013,6 @@ def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_u, q_i, file_addr
         cv2.waitKey(1)
 
 
-
 def quit_all():
     print('Exit ALL')
     os.kill(os.getpid(), signal.SIGTERM)
@@ -1072,31 +1036,24 @@ def run_multi_camera():
     queue_front_0 = mp.Queue(maxsize=2)
     queue_left_0 = mp.Queue(maxsize=2)
     queue_right_0 = mp.Queue(maxsize=2)
+
+    queue_s1 = mp.Queue(maxsize=2)
     queue_back_1 = mp.Queue(maxsize=2)
     queue_left_1 = mp.Queue(maxsize=2)
     queue_right_1 = mp.Queue(maxsize=2)
 
-    queue_s1 = mp.Queue(maxsize=2)
-    queue_ultra_0 = mp.Queue(maxsize=2)
-    queue_ultra_1 = mp.Queue(maxsize=2)
-    queue_ultra_main = mp.Queue(maxsize=2)
     queue_imu_0 = mp.Queue(maxsize=2)
     queue_imu_1 = mp.Queue(maxsize=2)
     queue_imu_main = mp.Queue(maxsize=2)
 
     processes.append(
-        mp.Process(target=distance_get, args=(queue_s0, queue_front_0, queue_left_0, queue_right_0, queue_ultra_0, queue_imu_0, lock, front_id, str_fileAddress)))
+        mp.Process(target=distance_get, args=(queue_s0, queue_front_0, queue_left_0, queue_right_0, queue_imu_0, lock, front_id, str_fileAddress)))
     processes.append(
-        mp.Process(target=distance_get, args=(queue_s1, queue_back_1, queue_right_1, queue_left_1, queue_ultra_1, queue_imu_1, lock, back_id, str_fileAddress)))
-    # processes.append(
-    #     mp.Process(target=sensor_get, args=(queue_ultra_0, queue_ultra_1, queue_ultra_main, queue_imu_0, queue_imu_1, queue_imu_main, lock, str_fileAddress)))
-    processes.append(
-        mp.Process(target=multi_calc, args=(queue_s0, queue_s1, queue_front_0, queue_back_1, queue_left_0, queue_right_0, queue_left_1, queue_right_1, queue_ultra_main, queue_imu_main, str_fileAddress)))
+        mp.Process(target=distance_get, args=(queue_s1, queue_back_1, queue_right_1, queue_left_1, queue_imu_1, lock, back_id, str_fileAddress)))
     processes.append(
         mp.Process(target=imu_get, args=(queue_imu_0, queue_imu_1, queue_imu_main, lock, str_fileAddress)))
     processes.append(
-        mp.Process(target=ultra_get, args=(queue_ultra_0, queue_ultra_1, queue_ultra_main,lock, str_fileAddress)))
-
+        mp.Process(target=multi_calc, args=(queue_s0, queue_s1, queue_front_0, queue_back_1, queue_left_0, queue_right_0, queue_left_1, queue_right_1, queue_imu_main, str_fileAddress)))
 
     for process in processes:
         process.daemon = True
