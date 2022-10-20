@@ -30,7 +30,7 @@ maxCan = 100
 # 前后单目、IMU串口、超声波串口编号
 front_id = 0
 back_id = 1
-imu_com = 'COM14'
+imu_com = '/dev/ttyUSB0'
 
 
 # 返回摄像头格式
@@ -366,85 +366,85 @@ def distance_get(q_s, q_f, q_l, q_r, q_i, lock_ser, cap_id, file_address):
 
 
 # 读取超声波和IMU数据
-def sensor_get(q_u0, q_u1, q_um, q_i0, q_i1, q_im, lock_ser, file_address):
-    se_u = serial.Serial(ultra_com, 9600, timeout=0.02)
-    se_i = serial.Serial(imu_com, 9600, timeout=0.02)
-    is_u_send = True
-
-    # 释放串口积攒的数据
-    # cv2.waitKey(300)
-    # release_mess = se_u.readline()
-    # cv2.waitKey(300)
-    release_mess = se_i.readline()
-
-    print('Sensor start')
-    while True:
-        try:
-            # 串口u发出超声波采样指令
-            if is_u_send:
-                se_u.write('1'.encode())
-                is_u_send = False
-
-            # 串口j采集JY61的IMU数据
-            imu_rec = se_i.read(33)
-            if imu_rec:
-                str_imu = binascii.b2a_hex(imu_rec).decode()
-                file_rec = open(file_address + 'JY61.txt', 'a')
-                str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-                if len(str_imu) == 66 and str_imu[0:4] == '5551':
-                    jy_list = JY61.DueData(imu_rec)
-                    if str(type(jy_list)) != "<class 'NoneType'>":
-                        sav_mess = ("normal;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;\n" % jy_list)
-                        send_list = [round(jy_list[6], 2), round(jy_list[7], 2), round(jy_list[8], 2)]
-                        # print(str(round(jy_list[6], 2)))
-                        q_i0.put(send_list)
-                        q_i0.get() if q_i0.qsize() > 1 else time.sleep(0.005)
-                        q_i1.put(send_list)
-                        q_i1.get() if q_i1.qsize() > 1 else time.sleep(0.005)
-                        q_im.put(send_list)
-                        q_im.get() if q_im.qsize() > 1 else time.sleep(0.005)
-                    else:
-                        sav_mess = ('NoneType;' + str_imu + ';\n')
-                        cv2.waitKey(50)
-                        release_mess = se_i.readline()
-                else:
-                    sav_mess = ('error;' + str_imu + ';\n')
-                    cv2.waitKey(50)
-                    release_mess = se_i.readline()
-                file_rec.write(str_time + ';' + sav_mess)
-                file_rec.close()
-
-            # 串口u接收超声波数据
-            ult_rec = se_u.readline()
-            # lock_ser.acquire()
-            if ult_rec:
-                is_u_send = True
-                file_serial = open(file_address + 'Ultra.txt', 'a')
-                str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-                str_ult = binascii.b2a_hex(ult_rec).decode()
-                if str_ult[0:2] == 'ff' and len(str_ult) > 18:
-                    s1 = str_ult[2:6]
-                    s2 = str_ult[6:10]
-                    u0 = int(s1, 16)
-                    u1 = int(s2, 16)
-                    ultra_list = [u0, u1]
-                    q_u0.put(u0)
-                    q_u0.get() if q_u0.qsize() > 1 else time.sleep(0.005)
-                    q_u1.put(u1)
-                    q_u1.get() if q_u1.qsize() > 1 else time.sleep(0.005)
-                    q_um.put(ultra_list)
-                    q_um.get() if q_um.qsize() > 1 else time.sleep(0.005)
-                    file_serial.write(str_time + ';normal;' + str(u0) + ';' + str(u1) + ';\n')
-                    # print('Ultra', str(u0), str(u1))
-                else:
-                    file_serial.write(str_time + ';error;' + str(str_ult) + ';\n')
-                file_serial.close()
-        except Exception as e:
-            print(e)
-            print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
-            print(f"error line:{e.__traceback__.tb_lineno}")
-        # finally:
-        #     lock_ser.release()
+# def sensor_get(q_u0, q_u1, q_um, q_i0, q_i1, q_im, lock_ser, file_address):
+#     se_u = serial.Serial(ultra_com, 9600, timeout=0.02)
+#     se_i = serial.Serial(imu_com, 9600, timeout=0.02)
+#     is_u_send = True
+#
+#     # 释放串口积攒的数据
+#     # cv2.waitKey(300)
+#     # release_mess = se_u.readline()
+#     # cv2.waitKey(300)
+#     release_mess = se_i.readline()
+#
+#     print('Sensor start')
+#     while True:
+#         try:
+#             # 串口u发出超声波采样指令
+#             if is_u_send:
+#                 se_u.write('1'.encode())
+#                 is_u_send = False
+#
+#             # 串口j采集JY61的IMU数据
+#             imu_rec = se_i.read(33)
+#             if imu_rec:
+#                 str_imu = binascii.b2a_hex(imu_rec).decode()
+#                 file_rec = open(file_address + 'JY61.txt', 'a')
+#                 str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+#                 if len(str_imu) == 66 and str_imu[0:4] == '5551':
+#                     jy_list = JY61.DueData(imu_rec)
+#                     if str(type(jy_list)) != "<class 'NoneType'>":
+#                         sav_mess = ("normal;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;%10.2f;\n" % jy_list)
+#                         send_list = [round(jy_list[6], 2), round(jy_list[7], 2), round(jy_list[8], 2)]
+#                         # print(str(round(jy_list[6], 2)))
+#                         q_i0.put(send_list)
+#                         q_i0.get() if q_i0.qsize() > 1 else time.sleep(0.005)
+#                         q_i1.put(send_list)
+#                         q_i1.get() if q_i1.qsize() > 1 else time.sleep(0.005)
+#                         q_im.put(send_list)
+#                         q_im.get() if q_im.qsize() > 1 else time.sleep(0.005)
+#                     else:
+#                         sav_mess = ('NoneType;' + str_imu + ';\n')
+#                         cv2.waitKey(50)
+#                         release_mess = se_i.readline()
+#                 else:
+#                     sav_mess = ('error;' + str_imu + ';\n')
+#                     cv2.waitKey(50)
+#                     release_mess = se_i.readline()
+#                 file_rec.write(str_time + ';' + sav_mess)
+#                 file_rec.close()
+#
+#             # 串口u接收超声波数据
+#             ult_rec = se_u.readline()
+#             # lock_ser.acquire()
+#             if ult_rec:
+#                 is_u_send = True
+#                 file_serial = open(file_address + 'Ultra.txt', 'a')
+#                 str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+#                 str_ult = binascii.b2a_hex(ult_rec).decode()
+#                 if str_ult[0:2] == 'ff' and len(str_ult) > 18:
+#                     s1 = str_ult[2:6]
+#                     s2 = str_ult[6:10]
+#                     u0 = int(s1, 16)
+#                     u1 = int(s2, 16)
+#                     ultra_list = [u0, u1]
+#                     q_u0.put(u0)
+#                     q_u0.get() if q_u0.qsize() > 1 else time.sleep(0.005)
+#                     q_u1.put(u1)
+#                     q_u1.get() if q_u1.qsize() > 1 else time.sleep(0.005)
+#                     q_um.put(ultra_list)
+#                     q_um.get() if q_um.qsize() > 1 else time.sleep(0.005)
+#                     file_serial.write(str_time + ';normal;' + str(u0) + ';' + str(u1) + ';\n')
+#                     # print('Ultra', str(u0), str(u1))
+#                 else:
+#                     file_serial.write(str_time + ';error;' + str(str_ult) + ';\n')
+#                 file_serial.close()
+#         except Exception as e:
+#             print(e)
+#             print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
+#             print(f"error line:{e.__traceback__.tb_lineno}")
+#         # finally:
+#         #     lock_ser.release()
 
 
 # 读取IMU数据
@@ -493,47 +493,47 @@ def imu_get(q_i0, q_i1, q_im, lock_ser, file_address):
 
 
 # 读取超声波数据
-def ultra_get(q_u0, q_u1, q_um, lock_ser, file_address):
-    cv2.waitKey(1100)
-    se_u = serial.Serial(ultra_com, 9600, timeout=0.05)
-    is_u_send = True
-    print('Ultra start')
-    while True:
-        try:
-            # 串口u发出超声波采样指令
-            if is_u_send:
-                se_u.write('1'.encode())
-                cv2.waitKey(50)
-                is_u_send = False
-            # 串口u接收超声波数据
-            ult_rec = se_u.readline()
-            # lock_ser.acquire()
-            if ult_rec:
-                is_u_send = True
-                file_serial = open(file_address + 'Ultra.txt', 'a')
-                str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-                str_ult = binascii.b2a_hex(ult_rec).decode()
-                if str_ult[0:2] == 'ff' and len(str_ult) > 18:
-                    s1 = str_ult[2:6]
-                    s2 = str_ult[6:10]
-                    u0 = int(s1, 16)
-                    u1 = int(s2, 16)
-                    ultra_list = [u0, u1]
-                    q_u0.put(u0)
-                    q_u0.get() if q_u0.qsize() > 1 else time.sleep(0.005)
-                    q_u1.put(u1)
-                    q_u1.get() if q_u1.qsize() > 1 else time.sleep(0.005)
-                    q_um.put(ultra_list)
-                    q_um.get() if q_um.qsize() > 1 else time.sleep(0.005)
-                    file_serial.write(str_time + ';normal;' + str(u0) + ';' + str(u1) + ';\n')
-                    # print('Ultra', str(u0), str(u1))
-                else:
-                    file_serial.write(str_time + ';error;' + str(str_ult) + ';\n')
-                file_serial.close()
-        except Exception as e:
-            print(e)
-            print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
-            print(f"error line:{e.__traceback__.tb_lineno}")
+# def ultra_get(q_u0, q_u1, q_um, lock_ser, file_address):
+#     cv2.waitKey(1100)
+#     se_u = serial.Serial(ultra_com, 9600, timeout=0.05)
+#     is_u_send = True
+#     print('Ultra start')
+#     while True:
+#         try:
+#             # 串口u发出超声波采样指令
+#             if is_u_send:
+#                 se_u.write('1'.encode())
+#                 cv2.waitKey(50)
+#                 is_u_send = False
+#             # 串口u接收超声波数据
+#             ult_rec = se_u.readline()
+#             # lock_ser.acquire()
+#             if ult_rec:
+#                 is_u_send = True
+#                 file_serial = open(file_address + 'Ultra.txt', 'a')
+#                 str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+#                 str_ult = binascii.b2a_hex(ult_rec).decode()
+#                 if str_ult[0:2] == 'ff' and len(str_ult) > 18:
+#                     s1 = str_ult[2:6]
+#                     s2 = str_ult[6:10]
+#                     u0 = int(s1, 16)
+#                     u1 = int(s2, 16)
+#                     ultra_list = [u0, u1]
+#                     q_u0.put(u0)
+#                     q_u0.get() if q_u0.qsize() > 1 else time.sleep(0.005)
+#                     q_u1.put(u1)
+#                     q_u1.get() if q_u1.qsize() > 1 else time.sleep(0.005)
+#                     q_um.put(ultra_list)
+#                     q_um.get() if q_um.qsize() > 1 else time.sleep(0.005)
+#                     file_serial.write(str_time + ';normal;' + str(u0) + ';' + str(u1) + ';\n')
+#                     # print('Ultra', str(u0), str(u1))
+#                 else:
+#                     file_serial.write(str_time + ';error;' + str(str_ult) + ';\n')
+#                 file_serial.close()
+#         except Exception as e:
+#             print(e)
+#             print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
+#             print(f"error line:{e.__traceback__.tb_lineno}")
 
 
 # 根据图像调整Canny参数
@@ -831,7 +831,8 @@ def camera_init():
 
 # 融合前后单目、超声和IMU，快速更新四向和偏航角
 def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_i, file_address):
-    cv2.waitKey(2000)
+    cv2.waitKey(1000)
+    print('calc start')
 
     imu_yaw = 0.0
 
@@ -880,46 +881,60 @@ def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_i, file_address):
             is_c0 = True
             rgb_c0 = q_s0.get()
 
+            # 前向水平线
+            if not q_f.empty():
+                is_f = True
+                dis_f = q_f.get()
+            else:
+                dis_f = [0]
+            cam_front = dis_f[0]
+
+            # 前向左垂线
+            if not q_lf.empty():
+                is_lf = True
+                dis_lf = q_lf.get()
+            else:
+                dis_lf = [0]
+            cam_left_f = dis_lf[0]
+
+            # 前向右垂线
+            if not q_rf.empty():
+                is_rf = True
+                dis_rf = q_rf.get()
+            else:
+                dis_rf = [0]
+            cam_right_f = dis_rf[0]
+
         # 后向图像
         if not q_s1.empty():
             is_c1 = True
             rgb_c1 = q_s1.get()
 
-        # 前向水平线
-        if not q_f.empty():
-            is_f = True
-            dis_f = q_f.get()
-            cam_front = dis_f[0]
-
-        # 前向左垂线
-        if not q_lf.empty():
-            is_lf = True
-            dis_lf = q_lf.get()
-            cam_left_f = dis_lf[0]
-
-        # 前向右垂线
-        if not q_rf.empty():
-            is_rf = True
-            dis_rf = q_rf.get()
-            cam_right_f = dis_rf[0]
-
-        # 后向水平线
-        if not q_b.empty():
-            is_b = True
-            dis_b = q_b.get()
+            # 后向水平线
+            if not q_b.empty():
+                is_b = True
+                dis_b = q_b.get()
+            else:
+                dis_b = [0]
             cam_back = dis_b[0]
 
-        # 后向左垂线
-        if not q_lb.empty():
-            is_lb = True
-            dis_lb = q_lb.get()
+            # 后向左垂线
+            if not q_lb.empty():
+                is_lb = True
+                dis_lb = q_lb.get()
+            else:
+                dis_lb = [0]
             cam_left_b = dis_lb[0]
 
-        # 后向右垂线
-        if not q_rb.empty():
-            is_rb = True
-            dis_rb = q_rb.get()
+            # 后向右垂线
+            if not q_rb.empty():
+                is_rb = True
+                dis_rb = q_rb.get()
+            else:
+                dis_rb = [0]
             cam_right_b = dis_rb[0]
+
+
 
         # 如果前后单目的任意一个完成处理，则更新显示
         if is_c0 or is_c1:
@@ -932,7 +947,8 @@ def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_i, file_address):
             half_height = int(show_height / 2)
             # 调整原图尺寸便于在左上和右上展示
             rgb_show_0 = cv2.resize(rgb_c0, (show_width, show_height))
-            rgb_show_1 = cv2.resize(rgb_c1, (show_width, show_height))
+            rgb_1 = cv2.resize(rgb_c1, (show_width, show_height))
+            rgb_show_1 = cv2.rotate(rgb_1, cv2.ROTATE_180)
 
             # 左下的距离展示区
             rgb_show_line = np.zeros((show_height, show_width, 3), np.uint8)
@@ -1003,8 +1019,8 @@ def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_i, file_address):
             # 4图拼接
             rgb_mix = np.zeros(((show_height * 2), (show_width * 2), 3), np.uint8)
             rgb_mix[0:show_height, 0:show_width] = rgb_show_0
-            rgb_mix[0:show_height, show_width:(show_width * 2)] = rgb_show_1
-            rgb_mix[show_height:(show_height * 2), 0:show_width] = rgb_show_line
+            rgb_mix[0:show_height, show_width:(show_width * 2)] = rgb_show_line
+            rgb_mix[show_height:(show_height * 2), 0:show_width] = rgb_show_1
             rgb_mix[show_height:(show_height * 2), show_width:(show_width * 2)] = rgb_show_data
             cv2.imshow('Show', rgb_mix)
 
