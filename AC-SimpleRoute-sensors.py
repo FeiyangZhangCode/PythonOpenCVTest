@@ -7,14 +7,15 @@ import keyboard
 import datetime
 import multiprocessing as mp
 import os
-import INA219
-import MPU6050
+import JY61
 
 se = serial.Serial('/dev/ttyTHS1', 115200, timeout=0.1)
 
-ultra_TH_F = 200  # 前向超声波阈值
-ultra_TH_B = 40  # 后向超声波阈值
-ultra_TH_LR = 30
+imu_com = '/dev/ttyUSB0'
+
+laser_TH_F = 200  # 前向超声波阈值
+laser_TH_B = 100  # 后向超声波阈值
+laser_TH_LR = 50
 
 cmd_0_head = 'aa 01'
 cmd_1_stop = '00'
@@ -53,19 +54,28 @@ def trans_speed(str_speed):
 
 
 # 读取各个传感器信息，返回判断后的状态
-def read_feedback(rec_mess, u_front, u_back, i_yaw):
+def read_feedback(hex_rec, i_yaw):
+    rec_mess = binascii.b2a_hex(hex_rec).decode()
     sensor_state = 0
     # 拆分数据包的4个防跌落
-    if len(rec_mess) >= 12:
+    if len(rec_mess) >= 20:
         if rec_mess[0:4] == 'aa02':
             int_fall_FL = int(rec_mess[4:6])
             int_fall_FR = int(rec_mess[6:8])
             int_fall_BL = int(rec_mess[8:10])
             int_fall_BR = int(rec_mess[10:12])
+            hex_f_h = hex_rec[6]
+            hex_f_l = hex_rec[7]
+            hex_b_h = hex_rec[8]
+            hex_b_l = hex_rec[9]
+            laser_F = hex_f_h << 8 | hex_f_l
+            laser_B = hex_b_h << 8 | hex_b_l
         else:
             int_fall_FL = int_fall_FR = int_fall_BL = int_fall_BR = 0
+            laser_F = laser_B = 0
     else:
         int_fall_FL = int_fall_FR = int_fall_BL = int_fall_BR = 0
+        laser_F = laser_B = 0
     # 多传感器判断
     if (int_fall_FL + int_fall_FR + int_fall_BL + int_fall_BR) > 0:  # 优先判断防跌落
         if (int_fall_FL + int_fall_FR + int_fall_BL + int_fall_BR) > 2:
@@ -98,23 +108,23 @@ def read_feedback(rec_mess, u_front, u_back, i_yaw):
                 sensor_state = 4
             else:
                 sensor_state = 2
-    elif u_front < ultra_TH_F or u_back < ultra_TH_B:  # 无跌落风险，判断超声波
-        if u_front < ultra_TH_F and u_back < ultra_TH_B:
+    elif laser_F < laser_TH_F or laser_B < laser_TH_B:  # 无跌落风险，判断前后测距
+        if laser_F < laser_TH_F and laser_B < laser_TH_B:
             sensor_state = 99
         elif abs(i_yaw) <= 5:
-            if u_front < ultra_TH_F:
+            if laser_F < laser_TH_F:
                 sensor_state = 1
-            elif u_back < ultra_TH_B:
+            elif laser_B < laser_TH_B:
                 sensor_state = 2
         elif i_yaw < -5.0:
-            if u_front < ultra_TH_LR:
+            if laser_F < laser_TH_LR:
                 sensor_state = 3
-            elif u_back < ultra_TH_LR:
+            elif laser_B < laser_TH_LR:
                 sensor_state = 4
         elif i_yaw > 5.0:
-            if u_front < ultra_TH_LR:
+            if laser_F < laser_TH_LR:
                 sensor_state = 4
-            elif u_back < ultra_TH_LR:
+            elif laser_B < laser_TH_LR:
                 sensor_state = 3
     elif abs(i_yaw) > 5:  # 没到边沿，判断偏航
         sensor_state = 5
@@ -122,69 +132,59 @@ def read_feedback(rec_mess, u_front, u_back, i_yaw):
 
 
 # 读取主板的反馈信息，返回各个传感器数据
-def read_sensors(rec_mess):
-    fall_FL = int(rec_mess[4:6])
-    fall_FR = int(rec_mess[6:8])
-    fall_BL = int(rec_mess[8:10])
-    fall_BR = int(rec_mess[10:12])
+def read_sensors(hex_rec):
+    rec_mess = binascii.b2a_hex(hex_rec).decode()
+    fall_FL = str(int(rec_mess[4:6]))
+    fall_FR = str(int(rec_mess[6:8]))
+    fall_BL = str(int(rec_mess[8:10]))
+    fall_BR = str(int(rec_mess[10:12]))
+    hex_f_h = hex_rec[6]
+    hex_f_l = hex_rec[7]
+    hex_b_h = hex_rec[8]
+    hex_b_l = hex_rec[9]
+    laser_F = hex_f_h << 8 | hex_f_l
+    laser_B = hex_b_h << 8 | hex_b_l
+    show_mess = 'Fall:' + fall_FL + ';' + fall_FR + ';' + fall_BL + ';' + fall_BR + '. Laser:' + str(laser_F) + '-' + str(laser_B)
+    return show_mess
 
-    return fall_FL, fall_FR, fall_BL, fall_BR
 
-
-# 串口读取超声数据
-def ultra_get(q_u, lock_ser, file_address):
-    se_u = serial.Serial('/dev/ttyUSB0', 9600, timeout=0.1)
+# 串口读取JY-61的IMU数据
+def imu_get(q_i, lock_ser, file_address):
+    se_i = serial.Serial(imu_com, 9600, timeout=0.05)
     while True:
         try:
-            se_u.write('1'.encode())
-            time.sleep(0.1)
-            ult_rec = se_u.readline()
-            lock_ser.acquire()
-            if ult_rec:
-                file_serial = open(file_address + 'Ultra.txt', 'a')
+            # lock_ser.acquire()
+            imu_rec = se_i.read(33)
+            # lock_ser.release()
+            if imu_rec:
+                str_imu = binascii.b2a_hex(imu_rec).decode()
+                file_rec = open(file_address + 'JY61.txt', 'a')
                 str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-                str_ult = binascii.b2a_hex(ult_rec).decode()
-                file_serial.write(str_time + str(str_ult) + '\n')
-                file_serial.close()
-                if str_ult[0:2] == 'ff':
-                    s1 = str_ult[2:6]
-                    s2 = str_ult[6:10]
-                    u0 = int(s1, 16)
-                    u1 = int(s2, 16)
-                    send_list = [str_time, u0, u1]
-                    q_u.put(send_list)
-                    q_u.get() if q_u.qsize() > 1 else time.sleep(0.005)
+                if len(str_imu) == 66 and str_imu[0:4] == '5551':
+                    jy_list = JY61.DueData(imu_rec)
+                    sav_mess = (
+                                "normal;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;\n" % jy_list)
+                    send_list = [round(jy_list[6], 2), round(jy_list[7], 2), round(jy_list[8], 2)]
+                    q_i.put(send_list)
+                    q_i.get() if q_i.qsize() > 1 else time.sleep(0.005)
+                else:
+                    sav_mess = ('error;' + str_imu + ';\n')
+                    se_i.flushOutput()
+                file_rec.write(str_time + ';' + sav_mess)
+                file_rec.close()
         except Exception as e:
             print(e)
-        finally:
-            lock_ser.release()
-
-
-# I2C读取IMU数据
-def imu_get(q_i, lock_ser, file_address):
-    while True:
-        cv2.waitKey(50)
-        temp_out, rot_x, rot_y, sav_mess = MPU6050.get_imu_data()
-        file_rec = open(file_address + 'MPU.txt', 'a')
-        str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-        file_rec.write(str_time + ';' + sav_mess)
-        file_rec.close()
-        send_list = [str_time, round(temp_out, 2), round(rot_x, 2), round(rot_y, 2)]
-        q_i.put(send_list)
-        q_i.get() if q_i.qsize() > 1 else time.sleep(0.005)
+            print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
+            print(f"error line:{e.__traceback__.tb_lineno}")
 
 
 # 根据动作组进行执行，list的0是动作的16进制命令，1是执行多少次
-def func_action(list_action, q_u, q_i, lock_ser, file_address):
+def func_action(list_action, q_i, lock_ser, file_address):
     sensor_state = 0  # 传感器状态，99是传感器异常，98是无反馈，97是运行错误
 
-    ultra_front = 0
-    ultra_back = 0
-    ultra_time = ''
     imu_yaw = 0.0
     imu_pitch = 0.0
-    imu_temp = 0.0
-    imu_time = ''
+    imu_roll = 0.0
 
     for id_action in range(0, len(list_action), 1):
         loop_nofeedback = 0  # 累加无反馈次数
@@ -208,17 +208,10 @@ def func_action(list_action, q_u, q_i, lock_ser, file_address):
                     # 获取偏航角
                     if not q_i.empty():
                         imu_list = q_i.get()
-                        imu_time = imu_list[0]
-                        imu_temp = imu_list[1]
-                        imu_yaw = imu_list[2]
-                        imu_pitch = imu_list[3]
-                    # 获取前后超声波
-                    if not q_u.empty():
-                        ultra_list = q_u.get()
-                        ultra_time = ultra_list[0]
-                        ultra_front = ultra_list[1]
-                        ultra_back = ultra_list[2]
-                    print('超声波', ultra_front, ultra_back, '偏航角', imu_yaw, '机内温度', imu_temp)
+                        imu_yaw = imu_list[0]
+                        imu_pitch = imu_list[1]
+                        imu_roll = imu_list[2]
+                    print('偏航角', str(imu_yaw), '俯仰角', str(imu_pitch))
 
                     hex_rec = se.readline()
                     if hex_rec:
@@ -227,8 +220,8 @@ def func_action(list_action, q_u, q_i, lock_ser, file_address):
                         str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
                         if len(str_rec) >= 12:
                             if str_rec[0:4] == 'aa02':
-                                int_fall_FL, int_fall_FR, int_fall_BL, int_fall_BR = read_sensors(str_rec)
-                                print(int_fall_FL, int_fall_FR, int_fall_BL, int_fall_BR)
+                                sensor_mess = read_sensors(hex_rec)
+                                print(sensor_mess)
                             else:
                                 print('头部异常', str_rec)
                         else:
@@ -254,17 +247,13 @@ def func_action(list_action, q_u, q_i, lock_ser, file_address):
 
 
 # 单步执行动作
-def single_action(hex_action, q_u, q_i, lock_ser, file_address):
+def single_action(hex_action, q_i, lock_ser, file_address):
     sensor_state = 0  # 传感器状态，99是传感器异常，98是无反馈，97是运行报错
     loop_nofeedback = 0  # 累加无反馈次数
     threshold_nofeedback = 10  # 累计无反馈上限值
-    ultra_front = 0
-    ultra_back = 0
-    ultra_time = ''
     imu_yaw = 0.0
     imu_pitch = 0.0
-    imu_temp = 0.0
-    imu_time = ''
+    imu_roll = 0.0
 
     no_feedback = True
     while no_feedback:
@@ -279,16 +268,9 @@ def single_action(hex_action, q_u, q_i, lock_ser, file_address):
             # 获取偏航角
             if not q_i.empty():
                 imu_list = q_i.get()
-                imu_time = imu_list[0]
-                imu_temp = imu_list[1]
-                imu_yaw = imu_list[2]
-                imu_pitch = imu_list[3]
-            # 获取前后超声波
-            if not q_u.empty():
-                ultra_list = q_u.get()
-                ultra_time = ultra_list[0]
-                ultra_front = ultra_list[1]
-                ultra_back = ultra_list[2]
+                imu_yaw = imu_list[0]
+                imu_pitch = imu_list[1]
+                imu_roll = imu_list[2]
 
             cv2.waitKey(40)
             hex_rec = se.readline()
@@ -299,7 +281,7 @@ def single_action(hex_action, q_u, q_i, lock_ser, file_address):
                 file_rec = open(file_address + 'Control.txt', 'a')
                 file_rec.write(str_Time + ',single,r,' + str_rec + '\r\n')
                 file_rec.close()
-                sensor_state = read_feedback(str_rec, ultra_front, ultra_back, imu_yaw)
+                sensor_state = read_feedback(hex_rec, imu_yaw)
             else:
                 # 重新发送命令，并累计无反馈次数
                 loop_nofeedback += 1
@@ -315,17 +297,13 @@ def single_action(hex_action, q_u, q_i, lock_ser, file_address):
 
 
 # 多步执行动作
-def multi_action(hex_action, times_action, q_u, q_i, lock_ser, file_address):
+def multi_action(hex_action, times_action, q_i, lock_ser, file_address):
     sensor_state = 0  # 传感器状态，99是传感器异常，98是无反馈，97是运行报错
     loop_nofeedback = 0  # 累加无反馈次数
     threshold_nofeedback = 10  # 累计无反馈上限值
-    ultra_front = 0
-    ultra_back = 0
-    ultra_time = ''
     imu_yaw = 0.0
     imu_pitch = 0.0
-    imu_temp = 0.0
-    imu_time = ''
+    imu_roll = 0.0
 
     for id_action in range(0, times_action, 1):
         no_feedback = True
@@ -341,16 +319,9 @@ def multi_action(hex_action, times_action, q_u, q_i, lock_ser, file_address):
                 # 获取偏航角
                 if not q_i.empty():
                     imu_list = q_i.get()
-                    imu_time = imu_list[0]
-                    imu_temp = imu_list[1]
-                    imu_yaw = imu_list[2]
-                    imu_pitch = imu_list[3]
-                # 获取前后超声波
-                if not q_u.empty():
-                    ultra_list = q_u.get()
-                    ultra_time = ultra_list[0]
-                    ultra_front = ultra_list[1]
-                    ultra_back = ultra_list[2]
+                    imu_yaw = imu_list[0]
+                    imu_pitch = imu_list[1]
+                    imu_roll = imu_list[2]
 
                 cv2.waitKey(40)
                 hex_rec = se.readline()
@@ -361,7 +332,7 @@ def multi_action(hex_action, times_action, q_u, q_i, lock_ser, file_address):
                     file_rec = open(file_address + 'Control.txt', 'a')
                     file_rec.write(str_Time + ',multi,r,' + str_rec + '\r\n')
                     file_rec.close()
-                    sensor_state = read_feedback(str_rec, ultra_front, ultra_back, imu_yaw)
+                    sensor_state = read_feedback(hex_rec, imu_yaw)
                     if sensor_state != 0 and sensor_state != 5:
                         break
                 else:
@@ -385,7 +356,7 @@ def multi_action(hex_action, times_action, q_u, q_i, lock_ser, file_address):
 
 
 # 校正偏航
-def correct_yaw(now_yaw, target_yaw, cmd_34, q_u, q_i, lock_ser, file_address):
+def correct_yaw(now_yaw, target_yaw, cmd_34, q_i, lock_ser, file_address):
     get_correct_err = 0
     correct_speed = 100
     imu_yaw = now_yaw
@@ -416,10 +387,9 @@ def correct_yaw(now_yaw, target_yaw, cmd_34, q_u, q_i, lock_ser, file_address):
         # 获取偏航角
         if not q_i.empty():
             imu_list = q_i.get()
-            imu_time = imu_list[0]
-            imu_temp = imu_list[1]
-            imu_yaw = imu_list[2]
-            imu_pitch = imu_list[3]
+            imu_yaw = imu_list[0]
+            imu_pitch = imu_list[1]
+            imu_roll = imu_list[2]
 
         # 读取主板反馈
         hex_rec = se.readline()
@@ -429,7 +399,7 @@ def correct_yaw(now_yaw, target_yaw, cmd_34, q_u, q_i, lock_ser, file_address):
             file_rec = open(file_address + 'Control.txt', 'a')
             file_rec.write(str_Time_cy + ';CorrectYaw;r;' + str_rec + ';\n')
             file_rec.close()
-            # sensor_state = read_feedback(str_rec, ultra_front, ultra_back, imu_yaw)
+            # sensor_state = read_feedback(hex_rec, imu_yaw)
         else:
             # 累计无反馈次数，继续执行
             loop_nofeedback += 1
@@ -442,10 +412,9 @@ def correct_yaw(now_yaw, target_yaw, cmd_34, q_u, q_i, lock_ser, file_address):
         # 获取偏航角
         if not q_i.empty():
             imu_list = q_i.get()
-            imu_time = imu_list[0]
-            imu_temp = imu_list[1]
-            imu_yaw = imu_list[2]
-            imu_pitch = imu_list[3]
+            imu_yaw = imu_list[0]
+            imu_pitch = imu_list[1]
+            imu_roll = imu_list[2]
 
         rot_yaw = imu_yaw - target_yaw
         if abs(rot_yaw) <= 1.0:     # 如果与目标角度相差不大于1，则认为已完成，
@@ -462,17 +431,13 @@ def correct_yaw(now_yaw, target_yaw, cmd_34, q_u, q_i, lock_ser, file_address):
 
 
 # 前后清洗
-def go_wash(is_front, cmd_2, cmd_34, q_u, q_i, lock_ser, file_address):
+def go_wash(is_front, cmd_2, cmd_34, q_i, lock_ser, file_address):
     sensor_state = 0  # 传感器状态，99是传感器异常，98是无反馈，97是运行报错
     loop_nofeedback = 0  # 累加无反馈次数
     threshold_nofeedback = 10  # 累计无反馈上限值
-    ultra_front = 0
-    ultra_back = 0
-    ultra_time = ''
     imu_yaw = 0.0
     imu_pitch = 0.0
-    imu_temp = 0.0
-    imu_time = ''
+    imu_roll = 0.0
 
     if is_front:
         hex_wash = set_order(cmd_0_head + cmd_1_moveFront + cmd_2 + cmd_34)
@@ -497,16 +462,9 @@ def go_wash(is_front, cmd_2, cmd_34, q_u, q_i, lock_ser, file_address):
                 # 获取偏航角
                 if not q_i.empty():
                     imu_list = q_i.get()
-                    imu_time = imu_list[0]
-                    imu_temp = imu_list[1]
-                    imu_yaw = imu_list[2]
-                    imu_pitch = imu_list[3]
-                # 获取前后超声波
-                if not q_u.empty():
-                    ultra_list = q_u.get()
-                    ultra_time = ultra_list[0]
-                    ultra_front = ultra_list[1]
-                    ultra_back = ultra_list[2]
+                    imu_yaw = imu_list[0]
+                    imu_pitch = imu_list[1]
+                    imu_roll = imu_list[2]
 
                 # 读取串口反馈
                 hex_rec = se.readline()
@@ -514,16 +472,9 @@ def go_wash(is_front, cmd_2, cmd_34, q_u, q_i, lock_ser, file_address):
                 # 获取偏航角
                 if not q_i.empty():
                     imu_list = q_i.get()
-                    imu_time = imu_list[0]
-                    imu_temp = imu_list[1]
-                    imu_yaw = imu_list[2]
-                    imu_pitch = imu_list[3]
-                # 获取前后超声波
-                if not q_u.empty():
-                    ultra_list = q_u.get()
-                    ultra_time = ultra_list[0]
-                    ultra_front = ultra_list[1]
-                    ultra_back = ultra_list[2]
+                    imu_yaw = imu_list[0]
+                    imu_pitch = imu_list[1]
+                    imu_roll = imu_list[2]
 
                 if hex_rec:
                     # 收到反馈，跳出反馈循环
@@ -532,45 +483,45 @@ def go_wash(is_front, cmd_2, cmd_34, q_u, q_i, lock_ser, file_address):
                     file_rec = open(file_address + 'Control.txt', 'a')
                     file_rec.write(str_Time_wash + ';wash;r;' + str_rec + ';\n')
                     file_rec.close()
-                    sensor_state = read_feedback(str_rec, ultra_front, ultra_back, imu_yaw)
+                    sensor_state = read_feedback(hex_rec, imu_yaw)
                     # 到左右边，移动远离边界
                     if 2 < sensor_state < 5:
                         # 停止移动，旋转角度
                         if is_front:
                             hex_correct = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_34)
-                            get_correct = single_action(hex_correct, q_u, q_i, lock_ser, file_address)
+                            get_correct = single_action(hex_correct, q_i, lock_ser, file_address)
                             if get_correct == 98:
                                 return get_correct
 
                             if sensor_state == 3:
-                                get_correct = correct_yaw(imu_yaw, 10.0, cmd_34, q_u, q_i, lock_ser, file_address)
+                                get_correct = correct_yaw(imu_yaw, 10.0, cmd_34, q_i, lock_ser, file_address)
                                 if get_correct == 98:
                                     return get_correct
                             elif sensor_state == 4:
-                                get_correct = correct_yaw(imu_yaw, -10.0, cmd_34, q_u, q_i, lock_ser, file_address)
+                                get_correct = correct_yaw(imu_yaw, -10.0, cmd_34, q_i, lock_ser, file_address)
                                 if get_correct == 98:
                                     return get_correct
                         else:
                             hex_correct = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_34)
-                            get_correct = single_action(hex_correct, q_u, q_i, lock_ser, file_address)
+                            get_correct = single_action(hex_correct, q_i, lock_ser, file_address)
                             if get_correct == 98:
                                 return get_correct
 
                             if sensor_state == 3:
-                                get_correct = correct_yaw(imu_yaw, -10.0, cmd_34, q_u, q_i, lock_ser, file_address)
+                                get_correct = correct_yaw(imu_yaw, -10.0, cmd_34, q_i, lock_ser, file_address)
                                 if get_correct == 98:
                                     return get_correct
                             elif sensor_state == 4:
-                                get_correct = correct_yaw(imu_yaw, 10.0, cmd_34, q_u, q_i, lock_ser, file_address)
+                                get_correct = correct_yaw(imu_yaw, 10.0, cmd_34, q_i, lock_ser, file_address)
                                 if get_correct == 98:
                                     return get_correct
                         # 旋转后直行，远离边界
-                        get_correct = multi_action(hex_wash, 10, q_u, q_i, lock_ser, file_address)
+                        get_correct = multi_action(hex_wash, 10, q_i, lock_ser, file_address)
                         if get_correct == 98:
                             return get_correct
                     # 执行远离边界或清洗偏航，偏航校正
                     if 2 < sensor_state < 6:
-                        get_correct = correct_yaw(imu_yaw, 0.0, cmd_34, q_u, q_i, lock_ser, file_address)  # 偏航校正
+                        get_correct = correct_yaw(imu_yaw, 0.0, cmd_34, q_i, lock_ser, file_address)  # 偏航校正
                         if get_correct == 98:
                             return get_correct
                         sensor_state = 0
@@ -590,29 +541,29 @@ def go_wash(is_front, cmd_2, cmd_34, q_u, q_i, lock_ser, file_address):
 
 
 # 左右平移
-def change_column(is_top, to_left, cmd_34, q_u, q_i, lock_ser, file_address):
+def change_column(is_top, to_left, cmd_34, q_i, lock_ser, file_address):
     re_state = 0
     hex_moveFront = set_order(cmd_0_head + cmd_1_moveFront + cmd_2_max + cmd_34)
     hex_moveBack = set_order(cmd_0_head + cmd_1_moveBack + cmd_2_max + cmd_34)
     if is_top:  # 如果在上边
         # 后退1秒，离开上边
-        move_state = multi_action(hex_moveBack, 5, q_u, q_i, lock_ser, file_address)
+        move_state = multi_action(hex_moveBack, 5, q_i, lock_ser, file_address)
         if move_state == 98:
             return move_state
         elif 2 < move_state < 5:
             re_state = move_state
         # 左旋或右旋30度
         if to_left:
-            move_state = correct_yaw(0.0, 30.0, cmd_34, q_u, q_i, lock_ser, file_address)
+            move_state = correct_yaw(0.0, 30.0, cmd_34, q_i, lock_ser, file_address)
         else:
-            move_state = correct_yaw(0.0, -30.0, cmd_34, q_u, q_i, lock_ser, file_address)
+            move_state = correct_yaw(0.0, -30.0, cmd_34, q_i, lock_ser, file_address)
         if move_state == 98:
             return move_state
         elif 2 < move_state < 5:
             re_state = move_state
 
         # 后退2秒，斜向行驶形成横向距离
-        move_state = multi_action(hex_moveBack, 10, q_u, q_i, lock_ser, file_address)
+        move_state = multi_action(hex_moveBack, 10, q_i, lock_ser, file_address)
         if move_state == 98:
             return move_state
         elif 2 < move_state < 5:
@@ -620,16 +571,16 @@ def change_column(is_top, to_left, cmd_34, q_u, q_i, lock_ser, file_address):
 
         # 旋转回垂直
         if to_left:
-            move_state = correct_yaw(30.0, 0.0, cmd_34, q_u, q_i, lock_ser, file_address)
+            move_state = correct_yaw(30.0, 0.0, cmd_34, q_i, lock_ser, file_address)
         else:
-            move_state = correct_yaw(-30.0, 0.0, cmd_34, q_u, q_i, lock_ser, file_address)
+            move_state = correct_yaw(-30.0, 0.0, cmd_34, q_i, lock_ser, file_address)
         if move_state == 98:
             return move_state
         elif 2 < move_state < 5:
             re_state = move_state
 
         # 前进2秒，回到上边
-        move_state = multi_action(hex_moveFront, 10, q_u, q_i, lock_ser, file_address)
+        move_state = multi_action(hex_moveFront, 10, q_i, lock_ser, file_address)
         if move_state == 98:
             return move_state
         elif 2 < move_state < 5:
@@ -637,7 +588,7 @@ def change_column(is_top, to_left, cmd_34, q_u, q_i, lock_ser, file_address):
 
     else:  # 如果在下边
         # 前进1秒，离开下边
-        move_state = multi_action(hex_moveFront, 5, q_u, q_i, lock_ser, file_address)
+        move_state = multi_action(hex_moveFront, 5, q_i, lock_ser, file_address)
         if move_state == 98:
             return move_state
         elif 2 < move_state < 5:
@@ -645,16 +596,16 @@ def change_column(is_top, to_left, cmd_34, q_u, q_i, lock_ser, file_address):
 
         # 左旋或右旋30度
         if to_left:
-            move_state = correct_yaw(0.0, -30.0, cmd_34, q_u, q_i, lock_ser, file_address)
+            move_state = correct_yaw(0.0, -30.0, cmd_34, q_i, lock_ser, file_address)
         else:
-            move_state = correct_yaw(0.0, 30.0, cmd_34, q_u, q_i, lock_ser, file_address)
+            move_state = correct_yaw(0.0, 30.0, cmd_34, q_i, lock_ser, file_address)
         if move_state == 98:
             return move_state
         elif 2 < move_state < 5:
             re_state = move_state
 
         # 前进2秒，斜向行驶形成横向距离
-        move_state = multi_action(hex_moveFront, 10, q_u, q_i, lock_ser, file_address)
+        move_state = multi_action(hex_moveFront, 10, q_i, lock_ser, file_address)
         if move_state == 98:
             return move_state
         elif 2 < move_state < 5:
@@ -662,16 +613,16 @@ def change_column(is_top, to_left, cmd_34, q_u, q_i, lock_ser, file_address):
 
         # 旋转回垂直
         if to_left:
-            move_state = correct_yaw(-30.0, 0.0, cmd_34, q_u, q_i, lock_ser, file_address)
+            move_state = correct_yaw(-30.0, 0.0, cmd_34, q_i, lock_ser, file_address)
         else:
-            move_state = correct_yaw(30.0, 0.0, cmd_34, q_u, q_i, lock_ser, file_address)
+            move_state = correct_yaw(30.0, 0.0, cmd_34, q_i, lock_ser, file_address)
         if move_state == 98:
             return move_state
         elif 2 < move_state < 5:
             re_state = move_state
 
         # 后退2秒，回到下边
-        move_state = multi_action(hex_moveBack, 10, q_u, q_i, lock_ser, file_address)
+        move_state = multi_action(hex_moveBack, 10, q_i, lock_ser, file_address)
         if move_state == 98:
             return move_state
         elif 2 < move_state < 5:
@@ -681,7 +632,7 @@ def change_column(is_top, to_left, cmd_34, q_u, q_i, lock_ser, file_address):
 
 
 # 执行自动控制
-def autocontrol_run(q_u, q_i, lock_ser, file_address):
+def autocontrol_run(q_i, lock_ser, file_address):
     # 设置上下次数
     loop_time = 2  # 上行+下行算作1次
     # 设置平移方向及次数
@@ -804,13 +755,9 @@ def autocontrol_run(q_u, q_i, lock_ser, file_address):
                        [hex_sprayStart, 10],
                        [hex_allStop, 10]]
 
-    ultra_front = 0
-    ultra_back = 0
-    ultra_time = ''
     imu_yaw = 0.0
     imu_pitch = 0.0
-    imu_temp = 0.0
-    imu_time = ''
+    imu_roll = 0.0
     board_cmd = cmd_3_stop + cmd_4_stop
 
     # 无反馈重新循环标志位
@@ -823,50 +770,37 @@ def autocontrol_run(q_u, q_i, lock_ser, file_address):
             hex_init_send = bytes.fromhex(str_init)
             str_Time_ac = datetime.datetime.now().strftime('%H:%M:%S.%f')
             try:
+                # 获取偏航角
+                if not q_i.empty():
+                    imu_list = q_i.get()
+                    imu_yaw = imu_list[0]
+                    imu_pitch = imu_list[1]
+                    imu_roll = imu_list[2]
+
                 se.write(hex_init_send)
                 file_rec = open(file_address + 'Control.txt', 'a')
                 file_rec.write(str_Time_ac + ';init;s;' + str_init + ';\n')
                 file_rec.close()
                 # print(str_Time_ac, 'i', str_init)
-                # 获取偏航角
-                if not q_i.empty():
-                    imu_list = q_i.get()
-                    imu_time = imu_list[0]
-                    imu_temp = imu_list[1]
-                    imu_yaw = imu_list[2]
-                    imu_pitch = imu_list[3]
-                # 获取前后超声波
-                if not q_u.empty():
-                    ultra_list = q_u.get()
-                    ultra_time = ultra_list[0]
-                    ultra_front = ultra_list[1]
-                    ultra_back = ultra_list[2]
-
                 # 发送后，延时读取
                 cv2.waitKey(30)
 
                 # 获取偏航角
                 if not q_i.empty():
                     imu_list = q_i.get()
-                    imu_time = imu_list[0]
-                    imu_temp = imu_list[1]
-                    imu_yaw = imu_list[2]
-                    imu_pitch = imu_list[3]
-                # 获取前后超声波
-                if not q_u.empty():
-                    ultra_list = q_u.get()
-                    ultra_time = ultra_list[0]
-                    ultra_front = ultra_list[1]
-                    ultra_back = ultra_list[2]
-                print('超声波', str(ultra_front), str(ultra_back), '偏航角', str(imu_yaw), '机内温度', str(imu_temp))
+                    imu_yaw = imu_list[0]
+                    imu_pitch = imu_list[1]
+                    imu_roll = imu_list[2]
+
+                print('偏航角', str(imu_yaw), '俯仰角', str(imu_pitch))
 
                 hex_init_rec = se.readline()
                 if hex_init_rec:
                     str_init_rec = binascii.b2a_hex(hex_init_rec).decode('utf-8')
                     if len(str_init_rec) >= 12:
                         if str_init_rec[0:4] == 'aa02':
-                            int_fall_FL, int_fall_FR, int_fall_BL, int_fall_BR = read_sensors(str_init_rec)
-                            print(int_fall_FL, int_fall_FR, int_fall_BL, int_fall_BR)
+                            sensor_init_mess = read_sensors(hex_init_rec)
+                            print(sensor_init_mess)
                             in_init = False
                             no_feedBack = False
                         else:
@@ -884,14 +818,13 @@ def autocontrol_run(q_u, q_i, lock_ser, file_address):
         # 获取偏航角
         if not q_i.empty():
             imu_list = q_i.get()
-            imu_time = imu_list[0]
-            imu_temp = imu_list[1]
-            imu_yaw = imu_list[2]
-            imu_pitch = imu_list[3]
+            imu_yaw = imu_list[0]
+            imu_pitch = imu_list[1]
+            imu_roll = imu_list[2]
 
-        if abs(imu_yaw) > 5.0:
+        if abs(imu_yaw) > 3.0:
             board_cmd = cmd_3_stop + cmd_4_stop
-            get_state = correct_yaw(imu_yaw, 0.0, board_cmd, q_u, q_i, lock_ser, file_address)
+            get_state = correct_yaw(imu_yaw, 0.0, board_cmd, q_i, lock_ser, file_address)
             if get_state == 98:
                 no_feedBack = True
         if no_feedBack:
@@ -903,14 +836,14 @@ def autocontrol_run(q_u, q_i, lock_ser, file_address):
         # 建立通信，开始执行
         for loop_num in range(0, loop_time, 1):
             # 准备清洗前进
-            get_state = func_action(list_prepareFront, q_u, q_i, lock_ser, file_address)
+            get_state = func_action(list_prepareFront, q_i, lock_ser, file_address)
             board_cmd = cmd_3_front + cmd_4_start
             if get_state == 98:
                 no_feedBack = True
                 break
 
             # 清洗前进
-            get_state = go_wash(True, cmd_2_washSpeed, q_u, q_i)
+            get_state = go_wash(True, cmd_2_washSpeed, board_cmd, q_i, lock_ser, file_address)
             if get_state == 98:
                 no_feedBack = True
                 break
@@ -920,7 +853,7 @@ def autocontrol_run(q_u, q_i, lock_ser, file_address):
                 print('故障')
 
             # 上行到上边
-            get_state = func_action(list_edgeFront, q_u, q_i, lock_ser, file_address)
+            get_state = func_action(list_edgeFront, q_i, lock_ser, file_address)
             board_cmd = cmd_3_stop + cmd_4_stop
             if get_state == 98:
                 no_feedBack = True
@@ -930,7 +863,7 @@ def autocontrol_run(q_u, q_i, lock_ser, file_address):
             if move_side == 0:  # 直行，不平移
                 pass
             elif move_side == 1:  # 上边左移
-                get_err_T2L = change_column(True, True, board_cmd, q_u, q_i, lock_ser, file_address)
+                get_err_T2L = change_column(True, True, board_cmd, q_i, lock_ser, file_address)
                 move_num += 1
                 if move_num >= move_times:
                     move_num = 0
@@ -943,7 +876,7 @@ def autocontrol_run(q_u, q_i, lock_ser, file_address):
                     move_side = 2
 
             elif move_side == 2:  # 上边右移
-                get_err_T2R = change_column(True, False, board_cmd, q_u, q_i, lock_ser, file_address)
+                get_err_T2R = change_column(True, False, board_cmd, q_i, lock_ser, file_address)
                 move_num += 1
                 if move_num >= move_times:
                     move_num = 0
@@ -956,14 +889,14 @@ def autocontrol_run(q_u, q_i, lock_ser, file_address):
                     move_side = 1
 
             # 准备清洗后退
-            get_state = func_action(list_prepareBack, q_u, q_i, lock_ser, file_address)
+            get_state = func_action(list_prepareBack, q_i, lock_ser, file_address)
             board_cmd = cmd_3_back + cmd_4_start
             if get_state == 98:
                 no_feedBack = True
                 break
 
             # 清洗后退
-            get_state = go_wash(False, cmd_2_washSpeed, board_cmd, q_u, q_i, lock_ser, file_address)
+            get_state = go_wash(False, cmd_2_washSpeed, board_cmd, q_i, lock_ser, file_address)
             if get_state == 98:
                 no_feedBack = True
                 break
@@ -973,7 +906,7 @@ def autocontrol_run(q_u, q_i, lock_ser, file_address):
                 print('故障')
 
             # 下行到下边
-            get_state = func_action(list_edgeBack, q_u, q_i, lock_ser, file_address)
+            get_state = func_action(list_edgeBack, q_i, lock_ser, file_address)
             board_cmd = cmd_3_stop + cmd_4_stop
             if get_state == 98:
                 no_feedBack = True
@@ -984,7 +917,7 @@ def autocontrol_run(q_u, q_i, lock_ser, file_address):
                 if move_side == 0:  # 直行，不平移
                     pass
                 elif move_side == 1:  # 左移
-                    get_err_B2L = change_column(False, True, board_cmd, q_u, q_i, lock_ser, file_address)
+                    get_err_B2L = change_column(False, True, board_cmd, q_i, lock_ser, file_address)
                     move_num += 1
                     if move_num >= move_times:
                         move_num = 0
@@ -996,7 +929,7 @@ def autocontrol_run(q_u, q_i, lock_ser, file_address):
                         move_num = 0
                         move_side = 2
                 elif move_side == 2:  # 右移
-                    get_err_B2R = change_column(False, False, board_cmd, q_u, q_i, lock_ser, file_address)
+                    get_err_B2R = change_column(False, False, board_cmd, q_i, lock_ser, file_address)
                     move_num += 1
                     if move_num >= move_times:
                         move_num = 0
@@ -1025,12 +958,10 @@ if __name__ == '__main__':
     mp.set_start_method(method='spawn')  # init
     processes = []
     lock = mp.Lock()
-    queue_ultra = mp.Queue(maxsize=2)
     queue_imu = mp.Queue(maxsize=2)
 
-    processes.append(mp.Process(target=ultra_get, args=(queue_ultra, lock, str_fileAddress)))
     processes.append(mp.Process(target=imu_get, args=(queue_imu, lock, str_fileAddress)))
-    processes.append(mp.Process(target=autocontrol_run, args=(queue_ultra, queue_imu, lock, str_fileAddress)))
+    processes.append(mp.Process(target=autocontrol_run, args=(queue_imu, lock, str_fileAddress)))
 
     for process in processes:
         process.daemon = True

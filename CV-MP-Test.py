@@ -30,7 +30,7 @@ maxCan = 100
 # 前后单目、IMU串口、超声波串口编号
 front_id = 0
 back_id = 1
-imu_com = '/dev/ttyUSB0'
+imu_com = 'COM12'
 
 
 # 返回摄像头格式
@@ -320,8 +320,8 @@ def distance_get(q_s, q_f, q_l, q_r, q_i, lock_ser, cap_id, file_address):
         # 显示及保存图片
         # rgb_show = cv2.resize(rgb_rot, (960, 540))
         # cv2.imshow('Cap' + str(cap_id), rgb_show)
-        # cv2.imwrite(file_address + 'C' + str(cap_id) + '-' + str_Time + '.jpg', rgb_frame)
-        # cv2.imwrite(file_address + 'D' + str(cap_id) + '-' + str_Time + '.jpg', rgb_rot)
+        cv2.imwrite(file_address + 'C' + str(cap_id) + '-' + str_Time + '.jpg', rgb_frame)
+        cv2.imwrite(file_address + 'D' + str(cap_id) + '-' + str_Time + '.jpg', rgb_rot)
 
         # 保存txt，传输数据
         q_s.put(rgb_show)
@@ -567,27 +567,26 @@ def camera_init():
             return 40, 100
 
     loop_num = 0
-
     while cap.isOpened() and loop_num < 15:
         loop_num += 1
         ret, frame = cap.read()
-        rgb_frame = frame.copy()
         if loop_num > 20:
             break
 
+    loop_num = 0
     while cap.isOpened() and loop_num < 5:
         ret, frame = cap.read()
         rgb_frame = frame.copy()
 
         # 设置各项参数
         angle_set = 0.0
-        width_threshold = 1180
+        width_threshold = 1050
         img_height = int(rgb_frame.shape[0])
         img_width = int(rgb_frame.shape[1])
         mid_height = int(img_height / 2)
         mid_width = int(img_width / 2)
         rgb_rot = rgb_frame.copy()
-        str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+        str_Time = datetime.datetime.now().strftime('%H%M%S')
         x = 0
         xls = xlwt.Workbook()
         sheet = xls.add_sheet('sheet1', cell_overwrite_ok=True)
@@ -597,8 +596,8 @@ def camera_init():
         temp_minCan = 0
         temp_maxCan = 0
 
-        for min_value in range(40, 220, 20):
-            for max_value in range(100, 450, 50):
+        for min_value in range(20, 220, 20):
+            for max_value in range(50, 450, 50):
                 find_width = False
                 rec_width = 0.0
                 rec_left = 0.0
@@ -717,9 +716,6 @@ def camera_init():
 
                     # 反推图像上的直线位置，找出最近的水平线和左右垂直线
                     start_time = time.time()
-                    dis_temp_f = 9999.0
-                    dis_temp_r = 9999.0
-                    dis_temp_l = -9999.0
 
                     if len(data_hor) > 0:
                         for values_hor in data_hor:
@@ -734,8 +730,6 @@ def camera_init():
                             cv2.line(rgb_rot, (x1_b, y1_b), (x2_b, y2_b), (255, 0, 0), 1)
                             cv2.putText(rgb_rot, str(round(values_hor[0], 0)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX,
                                         0.6, (255, 0, 0), 1)
-                            if dis_temp_f > values_hor[0]:
-                                dis_temp_f = values_hor[0]
                     if len(data_ver) > 0:
                         for values_ver in data_ver:
                             w1_b, h1_b = points_rotate(-angle_set, values_ver[0], values_ver[1])
@@ -752,12 +746,10 @@ def camera_init():
                             if values_ver[0] < 0:
                                 num_L += 1
                                 data_L = np.append(data_L, [[int(abs(values_ver[0])), x1_b, y1_b, x2_b, y2_b]], axis=0)
-                                if abs(dis_temp_l) > abs(values_ver[0]):
-                                    dis_temp_l = values_ver[0]
                                 if num_R > 0:
                                     for data_R_value in data_R:
                                         width_value = int(abs(values_ver[0])) + int(data_R_value[0])
-                                        if abs(width_value - width_threshold) <= 50:
+                                        if abs(width_value - width_threshold) <= 200:
                                             find_width = True
                                             rec_width = width_value
                                             rec_left = str(abs(values_ver[0]))
@@ -765,12 +757,10 @@ def camera_init():
                             else:
                                 num_R += 1
                                 data_R = np.append(data_R, [[int(abs(values_ver[0])), x1_b, y1_b, x2_b, y2_b]], axis=0)
-                                if dis_temp_r > values_ver[0]:
-                                    dis_temp_r = values_ver[0]
                                 if num_L > 0:
                                     for data_L_value in data_L:
                                         width_value = int(abs(values_ver[0])) + int(data_L_value[0])
-                                        if abs(width_value - width_threshold) <= 50:
+                                        if abs(width_value - width_threshold) <= 200:
                                             find_width = True
                                             rec_width = width_value
                                             rec_left = str(data_L_value[0])
@@ -786,6 +776,9 @@ def camera_init():
                 cv2.line(rgb_rot, (principal_x, 0), (principal_x, img_height), (255, 255, 0), 1)
                 cv2.line(rgb_rot, (0, principal_y), (img_width, principal_y), (255, 255, 0), 1)
                 cv2.circle(rgb_rot, (principal_x, principal_y), 5, (255, 255, 0), 3)
+
+                cv2.imwrite('./TestData/Test/C-' + str_Time + '.jpg', rgb_frame)
+                cv2.imwrite('./TestData/Test/D-' + str_Time + '.jpg', rgb_rot)
 
                 # 显示及保存图片
                 if find_width:
@@ -823,15 +816,21 @@ def camera_init():
                         x += 1
         # 如果检测到玻璃两边，保存校准数据，返回左、右识别线段最多；前向识别线段最多的参数
         if x > 0:
-            xls.save('./TestData/Cali-0-' + str_Time + '.xls')
+            xls.save('./TestData/Test/Cali-' + str_Time + '.xls')
             minCan = temp_minCan
             maxCan = temp_maxCan
+            print('Get New', minCan, maxCan)
             return temp_minCan, temp_maxCan
+        else:
+            print('Not Found')
+            return 40, 100
+    print('Run Out')
+    return minCan, maxCan
 
 
 # 融合前后单目、超声和IMU，快速更新四向和偏航角
 def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_i, file_address):
-    cv2.waitKey(1000)
+    cv2.waitKey(2000)
     print('calc start')
 
     imu_yaw = 0.0
@@ -842,6 +841,8 @@ def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_i, file_address):
     cam_left_b = 0
     cam_right_f = 0
     cam_right_b = 0
+    cam_left = 0
+    cam_right = 0
 
     dis_f = [0]
     dis_lf = [0]
@@ -895,7 +896,7 @@ def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_i, file_address):
                 dis_lf = q_lf.get()
             else:
                 dis_lf = [0]
-            cam_left_f = dis_lf[0]
+            # cam_left_f = dis_lf[0]
 
             # 前向右垂线
             if not q_rf.empty():
@@ -903,7 +904,7 @@ def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_i, file_address):
                 dis_rf = q_rf.get()
             else:
                 dis_rf = [0]
-            cam_right_f = dis_rf[0]
+            # cam_right_f = dis_rf[0]
 
         # 后向图像
         if not q_s1.empty():
@@ -924,7 +925,7 @@ def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_i, file_address):
                 dis_lb = q_lb.get()
             else:
                 dis_lb = [0]
-            cam_left_b = dis_lb[0]
+            # cam_left_b = dis_lb[0]
 
             # 后向右垂线
             if not q_rb.empty():
@@ -932,25 +933,75 @@ def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_i, file_address):
                 dis_rb = q_rb.get()
             else:
                 dis_rb = [0]
-            cam_right_b = dis_rb[0]
-
-
+            # cam_right_b = dis_rb[0]
 
         # 如果前后单目的任意一个完成处理，则更新显示
         if is_c0 or is_c1:
             end_time = time.time()
             time_mess = round((end_time - start_time) * 1000, 4)
 
+            # 上下单目的左侧融合
+            if dis_lf[0] != 0 and dis_lb[0] != 0:
+                is_fb_left = False
+                for i in range(0, len(dis_lf), 1):
+                    for j in range(0, len(dis_lb), 1):
+                        if abs(dis_lf[i] - dis_lb[j]) < 20:
+                            cam_left = int((dis_lf[i] + dis_lb[j]) / 2)
+                            cam_left_f = dis_lf[i]
+                            cam_left_b = dis_lb[j]
+                            is_fb_left = True
+                            break
+                    if is_fb_left:
+                        break
+            elif dis_lf[0] != 0 and cam_left != 0:
+                for i in range(0, len(dis_lf), 1):
+                    if abs(dis_lf[i] - cam_left) < 20:
+                        cam_left = int((cam_left * 2 + dis_lf[i]) / 3)
+                        cam_left_f = dis_lf[i]
+                        break
+            elif dis_lb[0] != 0 and cam_left != 0:
+                for i in range(0, len(dis_lb), 1):
+                    if abs(dis_lb[i] - cam_left) < 20:
+                        cam_left = int((cam_left * 2 + dis_lb[i]) / 3)
+                        cam_left_b = dis_lb[i]
+                        break
+
+            # 上下单目的右侧融合
+            if dis_rf[0] != 0 and dis_rb[0] != 0:
+                is_fb_right = False
+                for i in range(0, len(dis_rf), 1):
+                    for j in range(0, len(dis_rb), 1):
+                        if abs(dis_rf[i] - dis_rb[j]) < 20:
+                            cam_right = int((dis_rf[i] + dis_rb[j]) / 2)
+                            cam_right_f = dis_rf[i]
+                            cam_right_b = dis_rb[j]
+                            is_fb_right = True
+                            break
+                    if is_fb_right:
+                        break
+            elif dis_rf[0] != 0 and cam_right != 0:
+                for i in range(0, len(dis_rf), 1):
+                    if abs(dis_rf[i] - cam_right) < 20:
+                        cam_right = int((cam_right * 2 + dis_rf[i]) / 3)
+                        cam_right_f = dis_rf[i]
+                        break
+            elif dis_rb[0] != 0 and cam_right != 0:
+                for i in range(0, len(dis_rb), 1):
+                    if abs(dis_rb[i] - cam_right) < 20:
+                        cam_right = int((cam_right * 2 + dis_rb[i]) / 3)
+                        cam_right_b = dis_rb[i]
+                        break
+
             show_width = 640
             show_height = 360
             half_width = int(show_width / 2)
             half_height = int(show_height / 2)
-            # 调整原图尺寸便于在左上和右上展示
+            # 调整原图尺寸便于在左上和左下展示
             rgb_show_0 = cv2.resize(rgb_c0, (show_width, show_height))
             rgb_1 = cv2.resize(rgb_c1, (show_width, show_height))
             rgb_show_1 = cv2.rotate(rgb_1, cv2.ROTATE_180)
 
-            # 左下的距离展示区
+            # 右上的距离展示区
             rgb_show_line = np.zeros((show_height, show_width, 3), np.uint8)
             if dis_f[0] != 0:
                 for i in range(0, len(dis_f), 1):
@@ -976,6 +1027,13 @@ def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_i, file_address):
                 for i in range(0, len(dis_rb), 1):
                     temp_x = int(half_width + (half_width * dis_rb[i] / 2000))
                     cv2.line(rgb_show_line, (temp_x, half_height), (temp_x, show_height), (255, 0, 0), 1)
+            if cam_left != 0:
+                temp_x = int(half_width - (half_width * cam_left / 2000))
+                cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (0, 0, 255), 1)
+            if cam_right != 0:
+                temp_x = int(half_width + (half_width * cam_right / 2000))
+                cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (0, 0, 255), 1)
+
             cv2.line(rgb_show_line, (0, half_height), (show_width, half_height), (0, 255, 255), 1)
             cv2.line(rgb_show_line, (half_width, 0), (half_width, show_height), (0, 255, 255), 1)
             cv2.rectangle(rgb_show_line, (half_width - 1, half_height - 1), (half_width + 1, half_height + 1), (0, 255, 255), 1)
@@ -983,7 +1041,7 @@ def multi_calc(q_s0, q_s1, q_f, q_b, q_lf, q_rf, q_lb, q_rb, q_i, file_address):
             # 右下的数据展示区
             rgb_show_data = np.zeros((show_height, show_width, 3), np.uint8)
             str_0 = str_Time + '    ' + str(time_mess) + ' ms'
-            str_1 = 'Yaw:' + str(imu_yaw)
+            str_1 = 'Yaw:' + str(imu_yaw) + '  Left:' + str(cam_left) + '  Right:' + str(cam_right)
             str_2 = 'L:' + str(cam_left_f) + '-' + str(cam_left_b) + '  R:' + str(cam_right_f) + '-' + str(cam_right_b)
             str_2 += '  F:' + str(cam_front) + '  B:' + str(cam_back)
             str_3 = ''
@@ -1080,15 +1138,15 @@ def run_multi_camera():
 
 if __name__ == '__main__':
 
-    # cali_type = input('参数校准模式（0：自动，1：手动，2：默认）：')
-    # if cali_type == '0':
-    #     minCan, maxCan = camera_init()
-    #     # pass
-    # elif cali_type == '1':
-    #     minCan = int(input('minCan:'))
-    #     maxCan = int(input('maxCan:'))
-    # else:
-    #     minCan = 40
-    #     maxCan = 100
+    cali_type = input('参数校准模式（0：自动，1：手动，2：默认）：')
+    if cali_type == '0':
+        minCan, maxCan = camera_init()
+        # pass
+    elif cali_type == '1':
+        minCan = int(input('minCan:'))
+        maxCan = int(input('maxCan:'))
+    else:
+        minCan = 40
+        maxCan = 100
 
     run_multi_camera()  # 调用主函数

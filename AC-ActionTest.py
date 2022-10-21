@@ -68,13 +68,20 @@ def read_feedback(rec_mess):
 
 
 # 读取主板的反馈信息，返回各个传感器数据
-def read_sensors(rec_mess):
+def read_sensors(hex_rec):
+    rec_mess = binascii.b2a_hex(hex_rec).decode()
     fall_FL = str(int(rec_mess[4:6]))
     fall_FR = str(int(rec_mess[6:8]))
     fall_BL = str(int(rec_mess[8:10]))
     fall_BR = str(int(rec_mess[10:12]))
-
-    return fall_FL, fall_FR, fall_BL, fall_BR
+    hex_f_h = hex_rec[6]
+    hex_f_l = hex_rec[7]
+    hex_b_h = hex_rec[8]
+    hex_b_l = hex_rec[9]
+    laser_F = hex_f_h << 8 | hex_f_l
+    laser_B = hex_b_h << 8 | hex_b_l
+    show_mess = 'Fall:' + fall_FL + ';' + fall_FR + ';' + fall_BL + ';' + fall_BR + '. Laser:' + str(laser_F) + '-' + str(laser_B)
+    return show_mess
 
 
 def single_action(hex_action):
@@ -99,8 +106,8 @@ def single_action(hex_action):
                 str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
                 if len(str_rec) >= 12:
                     if str_rec[0:4] == 'aa02':
-                        sig_fall_FL, sig_fall_FR, sig_fall_BL, sig_fall_BR = read_sensors(str_rec)
-                        # print('防跌落', sig_fall_FL, sig_fall_FR, sig_fall_BL, sig_fall_BR)
+                        sensor_mess = read_sensors(hex_rec)
+                        print(sensor_mess)
                     else:
                         print('头部异常', str_rec)
                 else:
@@ -145,8 +152,8 @@ def multi_action(hex_action, times_action):
                     str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
                     if len(str_rec) >= 12:
                         if str_rec[0:4] == 'aa02':
-                            sig_fall_FL, sig_fall_FR, sig_fall_BL, sig_fall_BR = read_sensors(str_rec)
-                            # print('防跌落', sig_fall_FL, sig_fall_FR, sig_fall_BL, sig_fall_BR)
+                            sensor_mess = read_sensors(hex_rec)
+                            print(sensor_mess)
                         else:
                             print('头部异常', str_rec)
                     else:
@@ -195,8 +202,8 @@ def func_action(list_action):
                         str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
                         if len(str_rec) >= 12:
                             if str_rec[0:4] == 'aa02':
-                                sig_fall_FL, sig_fall_FR, sig_fall_BL, sig_fall_BR = read_sensors(str_rec)
-                                # print('防跌落', sig_fall_FL, sig_fall_FR, sig_fall_BL, sig_fall_BR)
+                                sensor_mess = read_sensors(hex_rec)
+                                print(sensor_mess)
                             else:
                                 print('头部异常', str_rec)
                         else:
@@ -355,10 +362,10 @@ if __name__ == '__main__':
                 hex_init_rec = se.readline()
                 if hex_init_rec:
                     str_init_rec = binascii.b2a_hex(hex_init_rec)
-                    if len(str_init_rec) >= 12:
+                    if len(str_init_rec) >= 20:
                         if str_init_rec[0:4].decode('utf-8') == 'aa02':
-                            str_fall_FL, str_fall_FR, str_fall_BL, str_fall_BR = read_sensors(str_init_rec)
-                            print('防跌落', str_fall_FL, str_fall_FR, str_fall_BL, str_fall_BR)
+                            sensor_mess = read_sensors(hex_init_rec)
+                            print(sensor_mess)
                             in_init = False
                             no_feedBack = False
                             print('通信正常')

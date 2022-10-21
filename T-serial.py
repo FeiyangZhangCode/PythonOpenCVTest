@@ -24,7 +24,7 @@ def serial_rw():
 
 def auto_answer():
     se = serial.Serial('/dev/ttyTHS1', 115200, timeout=0.2)
-    file_rec = open('./TestData/SerAutoAnswer.txt', 'a')
+    # file_rec = open('./TestData/SerAutoAnswer.txt', 'a')
 
     print('Start Read')
     get_num = 0
@@ -40,10 +40,9 @@ def auto_answer():
             get_num += 1
             str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
             # print(str_Time)
-            file_rec.write(str_Time + '\r\n')
+            # file_rec.write(str_Time + '\r\n')
             print(str_rec)
-            file_rec.write(str_rec.decode('utf-8') + '\r\n')
-
+            # file_rec.write(str_rec.decode('utf-8') + '\r\n')
 
 
 def serial_write():
@@ -62,14 +61,15 @@ def serial_read():
         time.sleep(1)
         line = se1.readline()
         if line:
-            se1.write('Get\r\n'.encode())
+            # se1.write('Get\r\n'.encode())
             print(line)
+            print(line[0], line[1])
 
 
 if __name__ == '__main__':
     print('Start')
     # serial_write()
-    # serial_read()
-    serial_rw()
+    serial_read()
+    # serial_rw()
     # auto_answer()
     print('End')
