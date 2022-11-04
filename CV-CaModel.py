@@ -219,9 +219,9 @@ while (cap_id != 0) and (cap_id != 1):
 
 model_w = 200
 if cap_id == 0:
-    model_f = 734
-    principal_x = 990
-    principal_y = 570
+    model_f = 759
+    principal_x = 996
+    principal_y = 502
 else:
     model_f = 940
     principal_x = 828

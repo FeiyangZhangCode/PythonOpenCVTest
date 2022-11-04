@@ -2,6 +2,53 @@ import cv2
 import numpy as np
 import time
 import math
+import crcmod
+
+
+# 速度改16进制(2022-10-25
+def trans_speed(str_speed):
+    int_speed = int(str_speed)
+    cmd_speed = hex(int_speed)[2:]
+    if int_speed > 100:
+        cmd_speed = '64'
+    elif int_speed < 16:
+        cmd_speed = '0' + cmd_speed
+    return cmd_speed
+
+
+# 将命令更改为串口输出的16进制，并加上crc8校验(2022-10-25)
+def set_order(str_order):
+    hex_order = bytes.fromhex(str_order)
+    crc8 = crcmod.predefined.Crc('crc-8')
+    crc8.update(hex_order)
+    hex_crc8 = bytes.fromhex(hex(crc8.crcValue)[2:])
+    hex_order = hex_order + hex_crc8
+    return hex_order
+
+
+# 根据水平线距离反推图像像素高度(2022-10-25)
+def calc_h2y(flo_h, f, w, a, b):
+    y_back = (f * w / flo_h - b) / a
+    return int(y_back)
+
+
+# 根据垂直线距离反推图像像素宽度(2022-10-25)
+def calc_w2x(flo_w, y, f, w, a, b, p_x):
+    temp_x = abs(flo_w) * (a * y + b) / w
+    if flo_w < 0:
+        x_back = p_x - temp_x
+    else:
+        x_back = p_x + temp_x
+    return int(x_back)
+
+
+# 根据偏航角角度进行坐标旋转(2022-10-25)
+def points_rotate(angle, org_x, org_y):
+    cos_angle = math.cos(math.radians(angle))
+    sin_angle = math.sin(math.radians(angle))
+    new_x = org_x * cos_angle + org_y * sin_angle
+    new_y = org_y * cos_angle - org_x * sin_angle
+    return new_x, new_y
 
 
 # 计算水平线实际距离（2022-08-01）
@@ -16,6 +63,7 @@ def calc_vertical(int_width, int_height, f, w, a, b):
     return distance_ver
 
 
+# 计算两点间距离(2022-10-25)
 def getDist_P2P(x1_d, y1_d, x2_d, y2_d):
     distance = math.pow((x1_d - x2_d), 2) + math.pow((y1_d - y2_d), 2)
     distance = math.sqrt(distance)
@@ -99,6 +147,7 @@ def get_HoughLinesP(gra_edge):
 
     return hor_height, ver_lines_org, err_mess
 
+
 # 识别水平线和垂线，分别返回水平、左、右线（2022-08-19）
 def get_HoughLinesFLR(gra_edge, p_x, p_y):
     # 提取各类型线段
@@ -144,9 +193,9 @@ def get_HoughLinesFLR(gra_edge, p_x, p_y):
                             # cv2.line(gra_lines, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
                             # num_lines += 1
                             # ver_lines_org.append(line)
-                            if (result > 0) and (max(x1_p, x2_p) < p_x) and (min(y1_p, y2_p) > p_y):      # 提取左下角垂线
+                            if (result > 0) and (max(x1_p, x2_p) < p_x) and (min(y1_p, y2_p) > p_y):  # 提取左下角垂线
                                 left_lines.append(line)
-                            elif (result < 0) and (min(x1_p, x2_p) > p_x) and (min(y1_p, y2_p) > p_y):      # 提取右下角垂线
+                            elif (result < 0) and (min(x1_p, x2_p) > p_x) and (min(y1_p, y2_p) > p_y):  # 提取右下角垂线
                                 right_lines.append(line)
     except Exception as e:
         err_mess += 'Hough lines\n' + str(e) + '\n'

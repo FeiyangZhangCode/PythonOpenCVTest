@@ -1456,7 +1456,7 @@ def go_wash(is_front, cmd_2, cmd_34, q_i, q_c, q_s, q_d, lock_ser, file_address,
     before_l = dis_l
     before_r = dis_r
 
-    while sensor_state == 0 and loop_num <= loop_times:
+    while sensor_state == 0 and (loop_num <= loop_times or loop_times == -1):
         no_feedback = True
         while no_feedback:
             try:
@@ -1984,15 +1984,10 @@ def autocontrol_run(q_i, q_d, q_c, q_s, lock_ser, file_address):
     move_times = 0  # 设置平移次数
     move_num = 0  # 累计平移次数
 
+    wash_loops = 20     # 设置上下清洗的移动距离限定，-1代表无限定。每次200ms，5次相当于1秒
+
     # 设置清洗速度
     cmd_2_washSpeed = CVFunc.trans_speed('50')
-    # 设置移动速度
-    cmd_2_moveSpeed = CVFunc.trans_speed('100')
-    # 设置旋转速度
-    cmd_2_rotatePalstance = CVFunc.trans_speed('50')
-
-    # 设置上下清洗的移动距离限定，-1代表无限定。每次200ms，5次相当于1秒
-    wash_loops = 20
 
     # 启动水系统
     hex_sprayStart = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_stop + cmd_4_start)
@@ -2002,8 +1997,6 @@ def autocontrol_run(q_i, q_d, q_c, q_s, lock_ser, file_address):
     hex_boardFront = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_front + cmd_4_stop)
     # 刮板向前，启动水系统
     hex_sprayFront = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_front + cmd_4_start)
-    # 清洗前进
-    hex_washFront = CVFunc.set_order(cmd_0_head + cmd_1_moveFront + cmd_2_washSpeed + cmd_3_front + cmd_4_start)
     # 清洗前进，移动停止
     hex_stopFront = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_front + cmd_4_start)
     # 刮板向前，关闭水系统
@@ -2012,20 +2005,10 @@ def autocontrol_run(q_i, q_d, q_c, q_s, lock_ser, file_address):
     hex_boardBack = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_back + cmd_4_stop)
     # 刮板向下，启动水系统
     hex_sprayBack = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_back + cmd_4_start)
-    # 清洗下行
-    hex_washBack = CVFunc.set_order(cmd_0_head + cmd_1_moveBack + cmd_2_washSpeed + cmd_3_back + cmd_4_start)
     # 清洗下行，移动停止
     hex_stopBack = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_back + cmd_4_start)
     # 刮板向下，关闭水系统
     hex_sprayStop_boardBack = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_back + cmd_4_stop)
-    # 移动向后
-    hex_moveBack = CVFunc.set_order(cmd_0_head + cmd_1_moveBack + cmd_2_moveSpeed + cmd_3_stop + cmd_4_stop)
-    # 右旋
-    hex_rotateRight = CVFunc.set_order(cmd_0_head + cmd_1_rotateRight + cmd_2_rotatePalstance + cmd_3_stop + cmd_4_stop)
-    # 左旋
-    hex_rotateLeft = CVFunc.set_order(cmd_0_head + cmd_1_rotateLeft + cmd_2_rotatePalstance + cmd_3_stop + cmd_4_stop)
-    # 移动向前
-    hex_moveFront = CVFunc.set_order(cmd_0_head + cmd_1_moveFront + cmd_2_moveSpeed + cmd_3_stop + cmd_4_stop)
 
     # 动作组-准备清洗向前
     list_prepareFront = [[hex_boardFront, 15],  # 刮板向前，15次约3秒

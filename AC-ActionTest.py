@@ -6,7 +6,7 @@ import crcmod
 import keyboard
 import datetime
 
-se = serial.Serial('/dev/ttyTHS1', 115200, timeout=0.09)
+se = serial.Serial('COM1', 115200, timeout=0.09)
 # se = serial.Serial('COM6', 115200, timeout=0.09)
 
 str_fileAddress = './TestData/' + datetime.datetime.now().strftime('%H%M%S') + '-Record.txt'
@@ -18,8 +18,8 @@ cmd_0_head = 'aa 01'
 cmd_1_stop = '00'
 cmd_1_moveFront = '01'
 cmd_1_moveBack = '02'
-cmd_1_rotateLeft = '03'
-cmd_1_rotateRight = '04'
+cmd_1_rotateLeft = '04'
+cmd_1_rotateRight = '03'
 cmd_2_speed0 = '00'
 cmd_3_stop = '00'
 cmd_3_front = '01'
@@ -33,7 +33,10 @@ def set_order(str_order):
     hex_order = bytes.fromhex(str_order)
     crc8 = crcmod.predefined.Crc('crc-8')
     crc8.update(hex_order)
-    hex_crc8 = bytes.fromhex(hex(crc8.crcValue)[2:])
+    if len(hex(crc8.crcValue)[2:]) == 1:
+        hex_crc8 = bytes.fromhex('0' + hex(crc8.crcValue)[2:])
+    else:
+        hex_crc8 = bytes.fromhex(hex(crc8.crcValue)[2:])
     hex_order = hex_order + hex_crc8
     return hex_order
 
@@ -84,6 +87,36 @@ def read_sensors(hex_rec):
     return show_mess
 
 
+# 根据发送的数据，拆分控制信号和主板信号
+def read_message(hex_rec):
+    str_rec = binascii.b2a_hex(hex_rec).decode()
+    read_state = 0
+    if len(str_rec) >= 12 and str_rec[0:4] == 'aa01':
+        int_move = int(str_rec[4:6])
+        int_speed = int(str_rec[6:8], 16)
+        int_board = int(str_rec[8:10])
+        int_water = int(str_rec[10:12])
+        read_state = 0
+        ret_list = [int_move, int_speed, int_board, int_water]
+    elif len(str_rec) >= 20 and str_rec[0:4] == 'aa02':
+        int_fall_FL = int(str_rec[4:6])
+        int_fall_FR = int(str_rec[6:8])
+        int_fall_BL = int(str_rec[8:10])
+        int_fall_BR = int(str_rec[10:12])
+        hex_f_h = hex_rec[6]
+        hex_f_l = hex_rec[7]
+        hex_b_h = hex_rec[8]
+        hex_b_l = hex_rec[9]
+        laser_F = hex_f_h << 8 | hex_f_l
+        laser_B = hex_b_h << 8 | hex_b_l
+        read_state = 1
+        ret_list = [int_fall_FL, int_fall_FR, int_fall_BL, int_fall_BR, laser_F, laser_B]
+    else:
+        read_state = 2
+        ret_list = [0]
+    return read_state, ret_list
+
+
 def single_action(hex_action):
     sensor_state = 0  # 传感器状态，99是传感器异常，98是无反馈，97是运行报错
     loop_nofeedback = 0  # 累加无反馈次数
@@ -107,7 +140,7 @@ def single_action(hex_action):
                 if len(str_rec) >= 12:
                     if str_rec[0:4] == 'aa02':
                         sensor_mess = read_sensors(hex_rec)
-                        print(sensor_mess)
+                        # print(sensor_mess)
                     else:
                         print('头部异常', str_rec)
                 else:
@@ -153,7 +186,7 @@ def multi_action(hex_action, times_action):
                     if len(str_rec) >= 12:
                         if str_rec[0:4] == 'aa02':
                             sensor_mess = read_sensors(hex_rec)
-                            print(sensor_mess)
+                            # print(sensor_mess)
                         else:
                             print('头部异常', str_rec)
                     else:
@@ -203,7 +236,7 @@ def func_action(list_action):
                         if len(str_rec) >= 12:
                             if str_rec[0:4] == 'aa02':
                                 sensor_mess = read_sensors(hex_rec)
-                                print(sensor_mess)
+                                # print(sensor_mess)
                             else:
                                 print('头部异常', str_rec)
                         else:
@@ -237,11 +270,11 @@ if __name__ == '__main__':
     move_num = 0  # 累计平移次数
 
     # 设置清洗速度
-    cmd_2_washSpeed = trans_speed('50')
+    cmd_2_washSpeed = trans_speed('25')
     # 设置移动速度
-    cmd_2_moveSpeed = trans_speed('100')
+    cmd_2_moveSpeed = trans_speed('25')
     # 设置旋转速度
-    cmd_2_rotatePalstance = trans_speed('50')
+    cmd_2_rotatePalstance = trans_speed('25')
 
     # 启动水系统
     hex_sprayStart = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_stop + cmd_4_start)
@@ -364,8 +397,8 @@ if __name__ == '__main__':
                     str_init_rec = binascii.b2a_hex(hex_init_rec)
                     if len(str_init_rec) >= 20:
                         if str_init_rec[0:4].decode('utf-8') == 'aa02':
-                            sensor_mess = read_sensors(hex_init_rec)
-                            print(sensor_mess)
+                            sensor_init_mess = read_sensors(hex_init_rec)
+                            print(sensor_init_mess)
                             in_init = False
                             no_feedBack = False
                             print('通信正常')
@@ -373,9 +406,11 @@ if __name__ == '__main__':
                             print('头部异常')
                     else:
                         print('长度异常')
+                if keyboard.is_pressed('q'):  # 结束运行，全部停止
+                    print('进入单步动作测试')
+                    in_init = False
             except Exception as e:
                 print(e)
-        print('进入动作测试')
 
         # 单个动作测试
         is_oneAction = True
@@ -409,6 +444,7 @@ if __name__ == '__main__':
                 get_stop_err = single_action(hex_allStop)
                 is_oneAction = False
             else:  # 无输入，停止移动，刮板和水系统停止
+                print('停止')
                 get_stop_err = single_action(hex_allStop)
             # 无反馈退出
             if get_one_err == 98 or get_stop_err == 98:
@@ -481,6 +517,7 @@ if __name__ == '__main__':
                 get_stop_err = single_action(hex_allStop)
                 is_oneAction = False
             else:  # 无输入，停止移动，刮板和水系统停止
+                print('停止')
                 get_stop_err = single_action(hex_allStop)
             # 无反馈退出
             if get_one_err == 98 or get_stop_err == 98 or get_two_err == 98:

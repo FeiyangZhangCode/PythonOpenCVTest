@@ -10,12 +10,11 @@ import os
 import JY61
 
 se = serial.Serial('/dev/ttyTHS1', 115200, timeout=0.1)
-
 imu_com = '/dev/ttyUSB0'
 
 laser_TH_F = 200  # 前向超声波阈值
-laser_TH_B = 100  # 后向超声波阈值
-laser_TH_LR = 50
+laser_TH_B = 150  # 后向超声波阈值
+laser_TH_LR = 80
 
 cmd_0_head = 'aa 01'
 cmd_1_stop = '00'
@@ -201,7 +200,6 @@ def func_action(list_action, q_i, lock_ser, file_address):
                     file_rec = open(file_address + 'Control.txt', 'a')
                     file_rec.write(str_Time + ';auto;s;' + str_send + ';\n')
                     file_rec.close()
-                    # print(str_Time, 's', str_send)
 
                     cv2.waitKey(60)
 
@@ -211,7 +209,6 @@ def func_action(list_action, q_i, lock_ser, file_address):
                         imu_yaw = imu_list[0]
                         imu_pitch = imu_list[1]
                         imu_roll = imu_list[2]
-                    print('偏航角', str(imu_yaw), '俯仰角', str(imu_pitch))
 
                     hex_rec = se.readline()
                     if hex_rec:
@@ -221,7 +218,7 @@ def func_action(list_action, q_i, lock_ser, file_address):
                         if len(str_rec) >= 12:
                             if str_rec[0:4] == 'aa02':
                                 sensor_mess = read_sensors(hex_rec)
-                                print(sensor_mess)
+                                print(sensor_mess, str(imu_yaw))
                             else:
                                 print('头部异常', str_rec)
                         else:
@@ -240,60 +237,12 @@ def func_action(list_action, q_i, lock_ser, file_address):
                             return sensor_state, id_action
                 except Exception as e_fa:
                     print(e_fa)
+                    print(f'error file:{e_fa.__traceback__.tb_frame.f_globals["__file__"]}')
+                    print(f"error line:{e_fa.__traceback__.tb_lineno}")
                     sensor_state = 97
                     return sensor_state, id_action
 
     return sensor_state, 0
-
-
-# 单步执行动作
-def single_action(hex_action, q_i, lock_ser, file_address):
-    sensor_state = 0  # 传感器状态，99是传感器异常，98是无反馈，97是运行报错
-    loop_nofeedback = 0  # 累加无反馈次数
-    threshold_nofeedback = 10  # 累计无反馈上限值
-    imu_yaw = 0.0
-    imu_pitch = 0.0
-    imu_roll = 0.0
-
-    no_feedback = True
-    while no_feedback:
-        try:
-            se.write(hex_action)
-            str_send = binascii.b2a_hex(hex_action).decode('utf-8')
-            str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-            file_rec = open(file_address + 'Control.txt', 'a')
-            file_rec.write(str_Time + ',single,s,' + str_send + '\r\n')
-            file_rec.close()
-            # print(str_Time, 's', str_send)
-            # 获取偏航角
-            if not q_i.empty():
-                imu_list = q_i.get()
-                imu_yaw = imu_list[0]
-                imu_pitch = imu_list[1]
-                imu_roll = imu_list[2]
-
-            cv2.waitKey(40)
-            hex_rec = se.readline()
-            if hex_rec:
-                # 收到反馈，跳出反馈循环
-                no_feedback = False
-                str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
-                file_rec = open(file_address + 'Control.txt', 'a')
-                file_rec.write(str_Time + ',single,r,' + str_rec + '\r\n')
-                file_rec.close()
-                sensor_state = read_feedback(hex_rec, imu_yaw)
-            else:
-                # 重新发送命令，并累计无反馈次数
-                loop_nofeedback += 1
-                print('无反馈', str(loop_nofeedback))
-                if loop_nofeedback >= threshold_nofeedback:
-                    sensor_state = 98
-                    no_feedback = False
-        except Exception as e_sa:
-            print(e_sa)
-            sensor_state = 97
-            no_feedback = False
-    return sensor_state
 
 
 # 多步执行动作
@@ -315,7 +264,6 @@ def multi_action(hex_action, times_action, q_i, lock_ser, file_address):
                 file_rec = open(file_address + 'Control.txt', 'a')
                 file_rec.write(str_Time + ',multi,s,' + str_send + '\r\n')
                 file_rec.close()
-                # print(str_Time, 's', str_send)
                 # 获取偏航角
                 if not q_i.empty():
                     imu_list = q_i.get()
@@ -345,6 +293,8 @@ def multi_action(hex_action, times_action, q_i, lock_ser, file_address):
                         break
             except Exception as e_sa:
                 print(e_sa)
+                print(f'error file:{e_sa.__traceback__.tb_frame.f_globals["__file__"]}')
+                print(f"error line:{e_sa.__traceback__.tb_lineno}")
                 sensor_state = 97
                 no_feedback = False
                 break
@@ -431,20 +381,21 @@ def correct_yaw(now_yaw, target_yaw, cmd_34, q_i, lock_ser, file_address):
 
 
 # 前后清洗
-def go_wash(is_front, cmd_2, cmd_34, q_i, lock_ser, file_address):
+def go_wash(is_front, cmd_2, cmd_34, q_i, lock_ser, file_address, loop_times):
     sensor_state = 0  # 传感器状态，99是传感器异常，98是无反馈，97是运行报错
     loop_nofeedback = 0  # 累加无反馈次数
     threshold_nofeedback = 10  # 累计无反馈上限值
     imu_yaw = 0.0
     imu_pitch = 0.0
     imu_roll = 0.0
+    loop_num = 0
 
     if is_front:
         hex_wash = set_order(cmd_0_head + cmd_1_moveFront + cmd_2 + cmd_34)
     else:
         hex_wash = set_order(cmd_0_head + cmd_1_moveBack + cmd_2 + cmd_34)
 
-    while sensor_state == 0:
+    while sensor_state == 0 and loop_num <= loop_times:
         no_feedback = True
         while no_feedback:
             try:
@@ -454,7 +405,6 @@ def go_wash(is_front, cmd_2, cmd_34, q_i, lock_ser, file_address):
                 file_rec = open(file_address + 'Control.txt', 'a')
                 file_rec.write(str_Time_wash + ';wash;s;' + str_send + ';\n')
                 file_rec.close()
-                # print(str_Time, 's', str_send)
 
                 # 等待串口发送
                 cv2.waitKey(40)
@@ -477,7 +427,8 @@ def go_wash(is_front, cmd_2, cmd_34, q_i, lock_ser, file_address):
                     imu_roll = imu_list[2]
 
                 if hex_rec:
-                    # 收到反馈，跳出反馈循环
+                    # 收到反馈，跳出反馈循环，累加次数
+                    loop_num += 1
                     no_feedback = False
                     str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
                     file_rec = open(file_address + 'Control.txt', 'a')
@@ -489,7 +440,7 @@ def go_wash(is_front, cmd_2, cmd_34, q_i, lock_ser, file_address):
                         # 停止移动，旋转角度
                         if is_front:
                             hex_correct = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_34)
-                            get_correct = single_action(hex_correct, q_i, lock_ser, file_address)
+                            get_correct = multi_action(hex_correct, 2, q_i, lock_ser, file_address)
                             if get_correct == 98:
                                 return get_correct
 
@@ -503,7 +454,7 @@ def go_wash(is_front, cmd_2, cmd_34, q_i, lock_ser, file_address):
                                     return get_correct
                         else:
                             hex_correct = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_34)
-                            get_correct = single_action(hex_correct, q_i, lock_ser, file_address)
+                            get_correct = multi_action(hex_correct, 2, q_i, lock_ser, file_address)
                             if get_correct == 98:
                                 return get_correct
 
@@ -534,6 +485,8 @@ def go_wash(is_front, cmd_2, cmd_34, q_i, lock_ser, file_address):
                         no_feedback = False
             except Exception as e_sa:
                 print(e_sa)
+                print(f'error file:{e_sa.__traceback__.tb_frame.f_globals["__file__"]}')
+                print(f"error line:{e_sa.__traceback__.tb_lineno}")
                 sensor_state = 97
                 no_feedback = False
 
@@ -646,6 +599,9 @@ def autocontrol_run(q_i, lock_ser, file_address):
     cmd_2_moveSpeed = trans_speed('100')
     # 设置旋转速度
     cmd_2_rotatePalstance = trans_speed('50')
+
+    # 设置上下清洗的移动距离限定，-1代表无限定。每次200ms，5次相当于1秒
+    wash_loops = 20
 
     # 启动水系统
     hex_sprayStart = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_stop + cmd_4_start)
@@ -781,7 +737,6 @@ def autocontrol_run(q_i, lock_ser, file_address):
                 file_rec = open(file_address + 'Control.txt', 'a')
                 file_rec.write(str_Time_ac + ';init;s;' + str_init + ';\n')
                 file_rec.close()
-                # print(str_Time_ac, 'i', str_init)
                 # 发送后，延时读取
                 cv2.waitKey(30)
 
@@ -792,15 +747,13 @@ def autocontrol_run(q_i, lock_ser, file_address):
                     imu_pitch = imu_list[1]
                     imu_roll = imu_list[2]
 
-                print('偏航角', str(imu_yaw), '俯仰角', str(imu_pitch))
-
                 hex_init_rec = se.readline()
                 if hex_init_rec:
                     str_init_rec = binascii.b2a_hex(hex_init_rec).decode('utf-8')
                     if len(str_init_rec) >= 12:
                         if str_init_rec[0:4] == 'aa02':
                             sensor_init_mess = read_sensors(hex_init_rec)
-                            print(sensor_init_mess)
+                            print(sensor_init_mess, str(imu_yaw))
                             in_init = False
                             no_feedBack = False
                         else:
@@ -812,6 +765,8 @@ def autocontrol_run(q_i, lock_ser, file_address):
                     file_rec.close()
             except Exception as e:
                 print(e)
+                print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
+                print(f"error line:{e.__traceback__.tb_lineno}")
 
         # 初始偏航校正
         print('初始偏航校正')
@@ -836,6 +791,7 @@ def autocontrol_run(q_i, lock_ser, file_address):
         # 建立通信，开始执行
         for loop_num in range(0, loop_time, 1):
             # 准备清洗前进
+            print('刮板向前，启动水系统')
             get_state = func_action(list_prepareFront, q_i, lock_ser, file_address)
             board_cmd = cmd_3_front + cmd_4_start
             if get_state == 98:
@@ -843,7 +799,8 @@ def autocontrol_run(q_i, lock_ser, file_address):
                 break
 
             # 清洗前进
-            get_state = go_wash(True, cmd_2_washSpeed, board_cmd, q_i, lock_ser, file_address)
+            print('清洗前行，次数', str(wash_loops))
+            get_state = go_wash(True, cmd_2_washSpeed, board_cmd, q_i, lock_ser, file_address, wash_loops)
             if get_state == 98:
                 no_feedBack = True
                 break
@@ -853,6 +810,7 @@ def autocontrol_run(q_i, lock_ser, file_address):
                 print('故障')
 
             # 上行到上边
+            print('到达顶部')
             get_state = func_action(list_edgeFront, q_i, lock_ser, file_address)
             board_cmd = cmd_3_stop + cmd_4_stop
             if get_state == 98:
@@ -863,6 +821,7 @@ def autocontrol_run(q_i, lock_ser, file_address):
             if move_side == 0:  # 直行，不平移
                 pass
             elif move_side == 1:  # 上边左移
+                print('向左平移，已移动', str(move_num))
                 get_err_T2L = change_column(True, True, board_cmd, q_i, lock_ser, file_address)
                 move_num += 1
                 if move_num >= move_times:
@@ -874,8 +833,8 @@ def autocontrol_run(q_i, lock_ser, file_address):
                 elif get_err_T2L == 3:
                     move_num = 0
                     move_side = 2
-
             elif move_side == 2:  # 上边右移
+                print('向右平移，已移动', str(move_num))
                 get_err_T2R = change_column(True, False, board_cmd, q_i, lock_ser, file_address)
                 move_num += 1
                 if move_num >= move_times:
@@ -889,6 +848,7 @@ def autocontrol_run(q_i, lock_ser, file_address):
                     move_side = 1
 
             # 准备清洗后退
+            print('刮板向后，启动水系统')
             get_state = func_action(list_prepareBack, q_i, lock_ser, file_address)
             board_cmd = cmd_3_back + cmd_4_start
             if get_state == 98:
@@ -896,7 +856,8 @@ def autocontrol_run(q_i, lock_ser, file_address):
                 break
 
             # 清洗后退
-            get_state = go_wash(False, cmd_2_washSpeed, board_cmd, q_i, lock_ser, file_address)
+            print('清洗后退，次数', str(wash_loops))
+            get_state = go_wash(False, cmd_2_washSpeed, board_cmd, q_i, lock_ser, file_address, wash_loops)
             if get_state == 98:
                 no_feedBack = True
                 break
@@ -906,6 +867,7 @@ def autocontrol_run(q_i, lock_ser, file_address):
                 print('故障')
 
             # 下行到下边
+            print('到达底部')
             get_state = func_action(list_edgeBack, q_i, lock_ser, file_address)
             board_cmd = cmd_3_stop + cmd_4_stop
             if get_state == 98:
@@ -917,6 +879,7 @@ def autocontrol_run(q_i, lock_ser, file_address):
                 if move_side == 0:  # 直行，不平移
                     pass
                 elif move_side == 1:  # 左移
+                    print('向左平移，已移动', str(move_num))
                     get_err_B2L = change_column(False, True, board_cmd, q_i, lock_ser, file_address)
                     move_num += 1
                     if move_num >= move_times:
@@ -929,6 +892,7 @@ def autocontrol_run(q_i, lock_ser, file_address):
                         move_num = 0
                         move_side = 2
                 elif move_side == 2:  # 右移
+                    print('向右平移，已移动', str(move_num))
                     get_err_B2R = change_column(False, False, board_cmd, q_i, lock_ser, file_address)
                     move_num += 1
                     if move_num >= move_times:
@@ -940,7 +904,7 @@ def autocontrol_run(q_i, lock_ser, file_address):
                     elif get_err_B2R == 4:
                         move_num = 0
                         move_side = 1
-
+            print('循环剩余', str(loop_time - loop_num))
         if no_feedBack:
             continue
 

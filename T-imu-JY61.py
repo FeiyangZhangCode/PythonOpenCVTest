@@ -168,11 +168,11 @@ def get_angle(datahex):
 
 if __name__ == '__main__':
     # use raw_input function for python 2.x or input function for python3.x
-    ser = serial.Serial('COM13', 9600, timeout=0.02)  # ser = serial.Serial('com7',115200, timeout=0.5)
+    ser = serial.Serial('/dev/ttyS3', 9600, timeout=0.02)  # ser = serial.Serial('com7',115200, timeout=0.5)
     print(ser.is_open)
     while True:
         time_mess = ''
-        file_rec = open('./TestData/JY61.txt', 'a')
+        # file_rec = open('./TestData/JY61.txt', 'a')
 
         # start_time = time.time()
         datahex = ser.read(33)
@@ -181,15 +181,15 @@ if __name__ == '__main__':
             str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
             str_rec = binascii.b2a_hex(datahex).decode()
             print(str_rec)
-            file_rec.write(str_rec + ';\n')
+            # file_rec.write(str_rec + ';\n')
             if len(str_rec) == 66 and str_rec[0:4] == '5551':
                 # print(str_rec[0:4])
                 get_mess = JY61.DueData(datahex)
 
                 # print(str_time)
                 print(get_mess[6], get_mess[7])
-                file_rec.write(str(get_mess[6]) + ';' + str(get_mess[7]) + ';\n')
-            file_rec.close()
+            #     file_rec.write(str(get_mess[6]) + ';' + str(get_mess[7]) + ';\n')
+            # file_rec.close()
         # end_time = time.time()
         # time_mess += 'Read:' + str(round((end_time - start_time) * 1000, 4)) + ';'
 

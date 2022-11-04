@@ -2,13 +2,13 @@ import cv2
 import datetime
 
 # 开始主程序
-cap = cv2.VideoCapture(1)
+cap = cv2.VideoCapture(9)
 cap.set(6, 1196444237)
 cap.set(3, 1920)
 cap.set(4, 1080)
 cap.set(5, 30)
-cap.set(11, 80)
-cap.set(12, 80)
+# cap.set(11, 80)
+# cap.set(12, 80)
 # cap.set(5, 30)
 
 
