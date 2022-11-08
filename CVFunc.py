@@ -21,7 +21,10 @@ def set_order(str_order):
     hex_order = bytes.fromhex(str_order)
     crc8 = crcmod.predefined.Crc('crc-8')
     crc8.update(hex_order)
-    hex_crc8 = bytes.fromhex(hex(crc8.crcValue)[2:])
+    if len(hex(crc8.crcValue)[2:]) == 1:
+        hex_crc8 = bytes.fromhex('0' + hex(crc8.crcValue)[2:])
+    else:
+        hex_crc8 = bytes.fromhex(hex(crc8.crcValue)[2:])
     hex_order = hex_order + hex_crc8
     return hex_order
 

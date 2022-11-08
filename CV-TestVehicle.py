@@ -29,7 +29,7 @@ maxCan = 400
 
 # 前后单目、IMU串口、超声波串口编号
 camera_id = 0
-imu_com = 'COM14'
+imu_com = '/dev/ttyTHS1'
 
 
 # 返回摄像头格式
@@ -38,6 +38,39 @@ def get_camera_data(cap, num):
     str_fourcc = str("".join([chr((int(cap.get(cv2.CAP_PROP_FOURCC)) >> 8 * k) & 0xFF) for k in range(4)])) + '\n'
     str_Info = str_Info + str_fourcc
     return str_Info
+
+
+# 计算两点间距离
+def getDist_P2P(x1_d, y1_d, x2_d, y2_d):
+    distance = math.pow((x1_d - x2_d), 2) + math.pow((y1_d - y2_d), 2)
+    distance = math.sqrt(distance)
+    return distance
+
+
+# 根据偏航角角度进行坐标旋转
+def points_rotate(angle, org_x, org_y):
+    cos_angle = math.cos(math.radians(angle))
+    sin_angle = math.sin(math.radians(angle))
+    new_x = org_x * cos_angle + org_y * sin_angle
+    new_y = org_y * cos_angle - org_x * sin_angle
+    return new_x, new_y
+
+
+# 根据水平线距离反推图像像素高度
+def calc_h2y(flo_h, f, w, a, b):
+    y_back = (f * w / flo_h - b) / a
+    return int(y_back)
+
+
+# 根据垂直线距离反推图像像素宽度
+def calc_w2x(flo_w, y, f, w, a, b, p_x):
+    temp_x = abs(flo_w) * (a * y + b) / w
+    if flo_w < 0:
+        x_back = p_x - temp_x
+    else:
+        x_back = p_x + temp_x
+    return int(x_back)
+
 
 # 抓取图片，确认视频流的读入
 def image_put(q, c_id):
@@ -118,13 +151,12 @@ def distance_get(q_c, q_i, q_y, lock_ser, cap_id, file_address):
         start_time = time.time()
         rgb_half = rgb_frame.copy()
         rgb_half[0:principal_y - 50, :] = (0, 0, 0)
-        # hsv_half = cv2.cvtColor(rgb_half, cv2.COLOR_BGR2HSV)
-        # low_range = np.array([0, 123, 100])
-        # high_range = np.array([5, 255, 255])
-        # gra_edge = cv2.inRange(hsv_half, low_range, high_range)
-        # gra_canny = gra_edge.copy()
-        gra_edge = cv2.Canny(rgb_half, minCan, maxCan)
+        hsv_half = cv2.cvtColor(rgb_half, cv2.COLOR_BGR2HSV)
+        low_range = np.array([0, 123, 100])
+        high_range = np.array([5, 255, 255])
+        gra_edge = cv2.inRange(hsv_half, low_range, high_range)
         gra_canny = gra_edge.copy()
+        # gra_edge = cv2.Canny(rgb_half, minCan, maxCan)
         end_time = time.time()
         time_mess += 'Can:' + str(round((end_time - start_time) * 1000, 4)) + ';'
 
@@ -163,7 +195,7 @@ def distance_get(q_c, q_i, q_y, lock_ser, cap_id, file_address):
                     # 计算偏航角
                     for line in lines:
                         for x1_p, y1_p, x2_p, y2_p in line:
-                            if CVFunc.getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 100.0:
+                            if getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 100.0:
                                 cv2.line(gra_hough, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
                                 # 根据偏航角进行旋转
                                 h1 = CVFunc.calc_horizontal(y1_p, model_F, model_W, model_a, model_b)
@@ -179,11 +211,11 @@ def distance_get(q_c, q_i, q_y, lock_ser, cap_id, file_address):
                                         angle_tan = np.arctan((w1 - w2) / (h2 - h1)) * 57.29577
                                     else:
                                         angle_tan = 90.0
-                                    x_mid = int((x1_p + x2_p) / 2)
-                                    y_mid = int((y1_p + y2_p) / 2)
-                                    cv2.line(rgb_rot, (x1_p, y1_p), (x2_p, y2_p), (255, 0, 0), 1)
-                                    cv2.putText(rgb_rot, str(round(angle_tan, 0)), (x_mid, y_mid),
-                                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
+                                    # x_mid = int((x1_p + x2_p) / 2)
+                                    # y_mid = int((y1_p + y2_p) / 2)
+                                    # cv2.line(rgb_rot, (x1_p, y1_p), (x2_p, y2_p), (255, 0, 0), 1)
+                                    # cv2.putText(rgb_rot, str(round(angle_tan, 0)), (x_mid, y_mid),
+                                    #             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
                                     # cv2.putText(rgb_rot, str(h1) + ',' + str(w1), (x1_p, y1_p),
                                     #             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
                                     # cv2.putText(rgb_rot, str(h2) + ',' + str(w2), (x2_p, y2_p),
@@ -210,81 +242,81 @@ def distance_get(q_c, q_i, q_y, lock_ser, cap_id, file_address):
                                         else:
                                             num_hor += 1
                                             lines_hor.append([w1, h1, w2, h2])
-            #         # 如果计算了偏航角，则反馈给IMU进程
-            #         if yaw_weight != 0:
-            #             q_y.put(yaw_avg)
-            #             q_y.get() if q_y.qsize() > 1 else time.sleep(0.005)
-            #         if num_ver != 0:
-            #             # 根据偏航角调整融合垂直线
-            #             for w1, h1, w2, h2 in lines_ver:
-            #                 x1_imu, y1_imu = CVFunc.points_rotate(yaw_avg, w1, h1)
-            #                 x2_imu, y2_imu = CVFunc.points_rotate(yaw_avg, w2, h2)
-            #                 # 垂直线,按照最接近中轴来拉直
-            #                 if x1_imu != x2_imu and y1_imu != y2_imu:
-            #                     if abs(x1_imu) > abs(x2_imu):
-            #                         x1_imu = x2_imu
-            #                     else:
-            #                         x2_imu = x1_imu
-            #                 # 如果距离中轴的差值不超过50，则认为是同一条，按最接近中轴进行融合。否则新增为新一条。
-            #                 temp_button = min(y1_imu, y2_imu)
-            #                 temp_top = max(y1_imu, y2_imu)
-            #                 if len(data_ver) == 0:
-            #                     data_ver = np.append(data_ver, [[x1_imu, temp_button, temp_top]], axis=0)
-            #                 else:
-            #                     new_ver = True
-            #                     for values_ver in data_ver:
-            #                         if abs(values_ver[0] - x1_imu) < 50:
-            #                             if abs(values_ver[0]) > abs(x1_imu):
-            #                                 values_ver[0] = x1_imu
-            #                             temp_v = min(values_ver[1], temp_button)
-            #                             values_ver[1] = temp_v
-            #                             temp_v = max(values_ver[2], temp_top)
-            #                             values_ver[2] = temp_v
-            #                             new_ver = False
-            #                             break
-            #                     if new_ver:
-            #                         data_ver = np.append(data_ver, [[x1_imu, temp_button, temp_top]], axis=0)
-            #             # 反推图像位置
-            #             for values_ver in data_ver:
-            #                 w1_b, h1_b = CVFunc.points_rotate(-yaw_avg, values_ver[0], values_ver[1])
-            #                 w2_b, h2_b = CVFunc.points_rotate(-yaw_avg, values_ver[0], values_ver[2])
-            #                 y1_b = CVFunc.calc_h2y(h1_b, model_F, model_W, model_a, model_b)
-            #                 y2_b = CVFunc.calc_h2y(h2_b, model_F, model_W, model_a, model_b)
-            #                 x1_b = CVFunc.calc_w2x(w1_b, y1_b, model_F, model_W, model_a, model_b, principal_x)
-            #                 x2_b = CVFunc.calc_w2x(w2_b, y2_b, model_F, model_W, model_a, model_b, principal_x)
-            #                 x_mid = int((x1_b + x2_b) / 2)
-            #                 y_mid = int((y1_b + y2_b) / 2)
-            #                 cv2.line(rgb_rot, (x1_b, y1_b), (x2_b, y2_b), (255, 0, 0), 1)
-            #                 cv2.putText(rgb_rot, str(round(values_ver[0], 0)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX,
-            #                             0.8,
-            #                             (255, 0, 0), 1)
-            #                 # cv2.line(rgb_show, (x1_b, y1_b), (x2_b, y2_b), (0, 0, 0), 6)
-            #                 if values_ver[0] < 0:
-            #                     num_left += 1
-            #                     if dis_l[0] == 0:
-            #                         dis_l[0] = int(abs(values_ver[0]))
-            #                     else:
-            #                         dis_l.append(int(abs(values_ver[0])))
-            #                 else:
-            #                     num_right += 1
-            #                     if dis_r[0] == 0:
-            #                         dis_r[0] = int(values_ver[0])
-            #                     else:
-            #                         dis_r.append(int(values_ver[0]))
-            #         if num_left != 0:
-            #             dis_l.sort()
-            #         if num_right != 0:
-            #             dis_r.sort()
-            # if num_left != 0:
-            #     temp_yaw = 0.0
-            #     if yaw_weight != 0:
-            #         temp_yaw = yaw_avg
-            #     else:
-            #         temp_yaw = -imu_yaw
-            #     if temp_yaw >= 0:
-            #         side_left = dis_l[0] - 148 * math.sin(math.radians(abs(temp_yaw))) - 115 * math.sin(math.radians(90.0 - abs(temp_yaw)))
-            #     else:
-            #         side_left = dis_l[0] + 148 * math.sin(math.radians(abs(temp_yaw))) - 115 * math.sin(math.radians(90.0 - abs(temp_yaw)))
+                    # 如果计算了偏航角，则反馈给IMU进程
+                    if yaw_weight != 0:
+                        q_y.put(yaw_avg)
+                        q_y.get() if q_y.qsize() > 1 else time.sleep(0.005)
+                    if num_ver != 0:
+                        # 根据偏航角调整融合垂直线
+                        for w1, h1, w2, h2 in lines_ver:
+                            x1_imu, y1_imu = CVFunc.points_rotate(yaw_avg, w1, h1)
+                            x2_imu, y2_imu = CVFunc.points_rotate(yaw_avg, w2, h2)
+                            # 垂直线,按照最接近中轴来拉直
+                            if x1_imu != x2_imu and y1_imu != y2_imu:
+                                if abs(x1_imu) > abs(x2_imu):
+                                    x1_imu = x2_imu
+                                else:
+                                    x2_imu = x1_imu
+                            # 如果距离中轴的差值不超过50，则认为是同一条，按最接近中轴进行融合。否则新增为新一条。
+                            temp_button = min(y1_imu, y2_imu)
+                            temp_top = max(y1_imu, y2_imu)
+                            if len(data_ver) == 0:
+                                data_ver = np.append(data_ver, [[x1_imu, temp_button, temp_top]], axis=0)
+                            else:
+                                new_ver = True
+                                for values_ver in data_ver:
+                                    if abs(values_ver[0] - x1_imu) < 50:
+                                        if abs(values_ver[0]) > abs(x1_imu):
+                                            values_ver[0] = x1_imu
+                                        temp_v = min(values_ver[1], temp_button)
+                                        values_ver[1] = temp_v
+                                        temp_v = max(values_ver[2], temp_top)
+                                        values_ver[2] = temp_v
+                                        new_ver = False
+                                        break
+                                if new_ver:
+                                    data_ver = np.append(data_ver, [[x1_imu, temp_button, temp_top]], axis=0)
+                        # 反推图像位置
+                        for values_ver in data_ver:
+                            w1_b, h1_b = CVFunc.points_rotate(-yaw_avg, values_ver[0], values_ver[1])
+                            w2_b, h2_b = CVFunc.points_rotate(-yaw_avg, values_ver[0], values_ver[2])
+                            y1_b = CVFunc.calc_h2y(h1_b, model_F, model_W, model_a, model_b)
+                            y2_b = CVFunc.calc_h2y(h2_b, model_F, model_W, model_a, model_b)
+                            x1_b = CVFunc.calc_w2x(w1_b, y1_b, model_F, model_W, model_a, model_b, principal_x)
+                            x2_b = CVFunc.calc_w2x(w2_b, y2_b, model_F, model_W, model_a, model_b, principal_x)
+                            x_mid = int((x1_b + x2_b) / 2)
+                            y_mid = int((y1_b + y2_b) / 2)
+                            cv2.line(rgb_rot, (x1_b, y1_b), (x2_b, y2_b), (255, 0, 0), 1)
+                            cv2.putText(rgb_rot, str(round(values_ver[0], 0)), (x_mid, y_mid), cv2.FONT_HERSHEY_SIMPLEX,
+                                        0.8,
+                                        (255, 0, 0), 1)
+                            # cv2.line(rgb_show, (x1_b, y1_b), (x2_b, y2_b), (0, 0, 0), 6)
+                            if values_ver[0] < 0:
+                                num_left += 1
+                                if dis_l[0] == 0:
+                                    dis_l[0] = int(abs(values_ver[0]))
+                                else:
+                                    dis_l.append(int(abs(values_ver[0])))
+                            else:
+                                num_right += 1
+                                if dis_r[0] == 0:
+                                    dis_r[0] = int(values_ver[0])
+                                else:
+                                    dis_r.append(int(values_ver[0]))
+                    if num_left != 0:
+                        dis_l.sort()
+                    if num_right != 0:
+                        dis_r.sort()
+            if num_left != 0:
+                temp_yaw = 0.0
+                if yaw_weight != 0:
+                    temp_yaw = yaw_avg
+                else:
+                    temp_yaw = -imu_yaw
+                if temp_yaw >= 0:
+                    side_left = dis_l[0] - 148 * math.sin(math.radians(abs(temp_yaw))) - 115 * math.sin(math.radians(90.0 - abs(temp_yaw)))
+                else:
+                    side_left = dis_l[0] + 148 * math.sin(math.radians(abs(temp_yaw))) - 115 * math.sin(math.radians(90.0 - abs(temp_yaw)))
             end_time = time.time()
             time_mess += 'Cal:' + str(round((end_time - start_time) * 1000, 4)) + ';'
         except Exception as e:
@@ -307,10 +339,8 @@ def distance_get(q_c, q_i, q_y, lock_ser, cap_id, file_address):
         rgb_canny_show = cv2.cvtColor(gra_canny_show, cv2.COLOR_GRAY2BGR)
         rgb_text_show = np.zeros((show_height, show_width, 3), np.uint8)
         str_0 = 'Roll:' + str(imu_roll) + '  Pitch:' + str(imu_pitch)
-        str_1 = 'Yaw:' + str(imu_yaw)
-        str_2 = 'Hor:' + str(num_hor) + '  Ver:' + str(num_ver)
-        # str_1 = 'iYaw:' + str(imu_yaw) + '  cYaw:' + str(round(yaw_avg, 2)) + '  cOth:' + str(round(other_avg, 2))
-        # str_2 = 'Left:' + str(dis_l[0]) + '  L-side:' + str(side_left)
+        str_1 = 'iYaw:' + str(imu_yaw) + '  cYaw:' + str(round(yaw_avg, 2)) + '  cOth:' + str(round(other_avg, 2))
+        str_2 = 'Left:' + str(dis_l[0]) + '  L-side:' + str(side_left)
         cv2.putText(rgb_text_show, str_0, (0, int(show_height / 4)), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 1)
         cv2.putText(rgb_text_show, str_1, (0, int(show_height / 2)), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 1)
         cv2.putText(rgb_text_show, str_2, (0, int(show_height * 3 / 4)), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 1)
@@ -389,6 +419,7 @@ def imu_get(q_id, q_im, q_y, lock_ser, file_address):
             print(e)
             print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
             print(f"error line:{e.__traceback__.tb_lineno}")
+
 
 
 def quit_all():
