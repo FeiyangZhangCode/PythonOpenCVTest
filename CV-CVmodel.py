@@ -61,7 +61,7 @@ def get_parameter(gra_edge):
     ver_lines_angle = []
     ver_lines_org = []
     num_hor = 0
-    lines = cv2.HoughLinesP(gra_edge, rho=1.0, theta=np.pi / 180, threshold=20, minLineLength=20, maxLineGap=5)
+    lines = cv2.HoughLinesP(gra_edge, rho=1.0, theta=np.pi / 180, threshold=10, minLineLength=10, maxLineGap=3)
     for line in lines:
         for x1_p, y1_p, x2_p, y2_p in line:
             if getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 50.0:
@@ -165,9 +165,9 @@ def get_parameter(gra_edge):
 # 开始主程序
 # 提取图像
 
-file_name = 'Cali-0-144239'
+file_name = 'Cali-0-144138'
 rgb_cap = cv2.imread('./TestData/' + file_name + '.jpg')
-rgb_frame = cv2.resize(rgb_cap, (960, 540))
+rgb_frame = cv2.resize(rgb_cap, (640, 360))
 # 获取图像位置参数
 img_test = rgb_frame.copy()
 img_height = int(img_test.shape[0])
@@ -175,20 +175,20 @@ img_width = int(img_test.shape[1])
 mid_height = int(img_height / 2)
 mid_width = int(img_width / 2)
 
-model_F = 759
+model_F = 246.10
 model_W = 200
-principal_x = 996
-principal_y = 502
-if img_height < 1080:
-    principal_y = int(principal_y * img_height / 1080)
-if img_width < 1920:
-    principal_x = int(principal_x * img_width / 1920)
+principal_x = 330
+principal_y = 169
+# if img_height < 1080:
+#     principal_y = int(principal_y * img_height / 1080)
+# if img_width < 1920:
+#     principal_x = int(principal_x * img_width / 1920)
 
 # 提取红色线,手动去除校准用红色区域
 gra_red = get_red(img_test)
-gra_red[0:principal_y + 80, :] = 0
-gra_red[principal_y + 50:, 0:int(img_width * 0.15)] = 0
-gra_red[principal_y + 50:, int(img_width * 0.85):img_width] = 0
+gra_red[0:principal_y + 20, :] = 0
+gra_red[principal_y + 10:, 0:int(img_width * 0.2)] = 0
+gra_red[principal_y + 10:, int(img_width * 0.9):img_width] = 0
 
 cv2.imshow('t0', gra_red)
 # Canny提取边界

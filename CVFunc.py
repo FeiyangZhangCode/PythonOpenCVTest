@@ -68,7 +68,7 @@ def draw_rectangles(is_ver, rectangles_list, rgb_draw, rect_threshold, yaw_avg, 
 
     if len(dis_line) > 1:
         del dis_line[0]
-    return rgb_draw, num_rect, num_line, dis_line
+    return rgb_draw, dis_line
 
 
 # 速度改16进制(2022-10-25）

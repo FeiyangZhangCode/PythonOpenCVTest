@@ -15,211 +15,282 @@ import multiprocessing as mp
 import os
 import JY61
 
+
+# 绘制矩形（2022-11-21）
+def draw_rectangles(is_ver, rectangles_list, rgb_draw, rect_threshold, yaw_c, f, w, a, b, p_x):
+    num_rect = 0
+    num_line = 0
+    dis_line = [[0.0, 0.0]]
+    for rect_value in rectangles_list:
+        if is_ver:
+            if rect_value[0] != rect_value[1]:
+                num_rect += 1
+                draw_left = rect_value[0]
+                draw_right = rect_value[1]
+                draw_button = rect_value[2]
+                draw_top = rect_value[3]
+                xd_lt, yd_lt = CVFunc.points_dis2xy(yaw_c, draw_left, draw_top, f, w, a, b, p_x)
+                xd_lb, yd_lb = CVFunc.points_dis2xy(yaw_c, draw_left, draw_button, f, w, a, b, p_x)
+                xd_rt, yd_rt = CVFunc.points_dis2xy(yaw_c, draw_right, draw_top, f, w, a, b, p_x)
+                xd_rb, yd_rb = CVFunc.points_dis2xy(yaw_c, draw_right, draw_button, f, w, a, b, p_x)
+                if abs(draw_right - draw_left) > rect_threshold:
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_lb, yd_lb), (0, 0, 255), 2)
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_rt, yd_rt), (0, 0, 255), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_lb, yd_lb), (0, 0, 255), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_rt, yd_rt), (0, 0, 255), 2)
+                    dis_line.append([draw_left, draw_right])
+                else:
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_lb, yd_lb), (255, 0, 0), 2)
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_rt, yd_rt), (255, 0, 0), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_lb, yd_lb), (255, 0, 0), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_rt, yd_rt), (255, 0, 0), 2)
+            else:
+                num_line += 1
+                xd1_b, yd1_b = CVFunc.points_dis2xy(yaw_c, rect_value[0], rect_value[2], f, w, a, b, p_x)
+                xd2_b, yd2_b = CVFunc.points_dis2xy(yaw_c, rect_value[0], rect_value[3], f, w, a, b, p_x)
+                cv2.line(rgb_draw, (xd1_b, yd1_b), (xd2_b, yd2_b), (0, 255, 0), 2)
+        else:
+            if rect_value[2] != rect_value[3]:
+                num_rect += 1
+                draw_left = rect_value[0]
+                draw_right = rect_value[1]
+                draw_button = rect_value[2]
+                draw_top = rect_value[3]
+                xd_lt, yd_lt = CVFunc.points_dis2xy(yaw_c, draw_left, draw_top, f, w, a, b, p_x)
+                xd_lb, yd_lb = CVFunc.points_dis2xy(yaw_c, draw_left, draw_button, f, w, a, b, p_x)
+                xd_rt, yd_rt = CVFunc.points_dis2xy(yaw_c, draw_right, draw_top, f, w, a, b, p_x)
+                xd_rb, yd_rb = CVFunc.points_dis2xy(yaw_c, draw_right, draw_button, f, w, a, b, p_x)
+                if abs(draw_top - draw_button) > rect_threshold:
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_lb, yd_lb), (0, 0, 255), 2)
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_rt, yd_rt), (0, 0, 255), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_lb, yd_lb), (0, 0, 255), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_rt, yd_rt), (0, 0, 255), 2)
+                    dis_line.append([draw_top, draw_button])
+                else:
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_lb, yd_lb), (255, 0, 0), 2)
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_rt, yd_rt), (255, 0, 0), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_lb, yd_lb), (255, 0, 0), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_rt, yd_rt), (255, 0, 0), 2)
+            else:
+                num_line += 1
+                xd1_b, yd1_b = CVFunc.points_dis2xy(yaw_c, rect_value[0], rect_value[2], f, w, a, b, p_x)
+                xd2_b, yd2_b = CVFunc.points_dis2xy(yaw_c, rect_value[1], rect_value[2], f, w, a, b, p_x)
+                cv2.line(rgb_draw, (xd1_b, yd1_b), (xd2_b, yd2_b), (0, 255, 0), 2)
+
+    if len(dis_line) > 1:
+        del dis_line[0]
+    return rgb_draw
+
+
 # 读取模型参数
-file_model = open('./Model-540.txt', 'r', encoding='utf-8')
+file_model = open('./Model-360.txt', 'r', encoding='utf-8')
 para_lines = file_model.readlines()
 file_model.close()
 
-# 初始化状态标志位
-glo_is_init = True
-
-# 相机编号、IMU串口信息、主板串口信息
-camera_id = 0
-imu_com = '/dev/ttyTHS1'
-imu_baud = 9600
-imu_timeout = 0.05
-
-# 主板通信串口
+# # 初始化状态标志位
+# glo_is_init = True
+#
+# # 相机编号、IMU串口信息、主板串口信息
+# camera_id = 0
+# imu_com = '/dev/ttyTHS1'
+# imu_baud = 9600
+# imu_timeout = 0.05
+#
+# # 主板通信串口
 # se = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.1)
-
-# 机身尺寸
-vehicle_left = 118
-vehicle_right = 127
-vehicle_front = 148
-
-# 左右单目阈值
-camera_TH_L = 100
-camera_TH_R = 100
-
-cmd_0_head = 'aa 01'
-cmd_1_stop = '00'
-cmd_1_moveFront = '01'
-cmd_1_moveBack = '02'
-cmd_1_rotateLeft = '04'
-cmd_1_rotateRight = '03'
-cmd_2_speed0 = '00'
-cmd_2_slow = '0a'
-cmd_2_max = '64'
-cmd_3_stop = '00'
-cmd_3_front = '01'
-cmd_3_back = '02'
-cmd_4_stop = '00'
-cmd_4_start = '01'
-
-
-# 抓取图片，确认视频流的读入
-def image_put(q, c_id):
-    cap = cv2.VideoCapture(c_id)
-    cap.set(6, 1196444237)
-    cap.set(3, 960)
-    cap.set(4, 540)
-    cap.set(5, 30)
-    if cap.isOpened():
-        print('Get1', c_id)
-    else:
-        cap = cv2.VideoCapture(c_id)
-        cap.set(6, 1196444237)
-        cap.set(3, 960)
-        cap.set(4, 540)
-        cap.set(5, 30)
-        print('Get2', c_id)
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        # 抓取图片不成功再重新抓取
-        if not ret:
-            cap = cv2.VideoCapture(c_id)
-            print('Get3', c_id)
-            ret, frame = cap.read()
-        q.put(frame)
-        # print('q.qsize():', q.qsize())
-        q.get() if q.qsize() > 1 else time.sleep(0.01)
+#
+# # 机身尺寸
+# vehicle_left = 118
+# vehicle_right = 127
+# vehicle_front = 148
+#
+# # 左右单目阈值
+# camera_TH_L = 100
+# camera_TH_R = 100
+#
+# cmd_0_head = 'aa 01'
+# cmd_1_stop = '00'
+# cmd_1_moveFront = '01'
+# cmd_1_moveBack = '02'
+# cmd_1_rotateLeft = '04'
+# cmd_1_rotateRight = '03'
+# cmd_2_speed0 = '00'
+# cmd_2_slow = '0a'
+# cmd_2_max = '64'
+# cmd_3_stop = '00'
+# cmd_3_front = '01'
+# cmd_3_back = '02'
+# cmd_4_stop = '00'
+# cmd_4_start = '01'
+#
+#
+# # 抓取图片，确认视频流的读入
+# def image_put(q, c_id):
+#     cap = cv2.VideoCapture(c_id)
+#     cap.set(6, 1196444237)
+#     cap.set(3, 960)
+#     cap.set(4, 540)
+#     cap.set(5, 30)
+#     if cap.isOpened():
+#         print('Get1', c_id)
+#     else:
+#         cap = cv2.VideoCapture(c_id)
+#         cap.set(6, 1196444237)
+#         cap.set(3, 960)
+#         cap.set(4, 540)
+#         cap.set(5, 30)
+#         print('Get2', c_id)
+#
+#     while cap.isOpened():
+#         ret, frame = cap.read()
+#         # 抓取图片不成功再重新抓取
+#         if not ret:
+#             cap = cv2.VideoCapture(c_id)
+#             print('Get3', c_id)
+#             ret, frame = cap.read()
+#         q.put(frame)
+#         # print('q.qsize():', q.qsize())
+#         q.get() if q.qsize() > 1 else time.sleep(0.01)
 
 
 # 调用相机获取图片进行测距
-def distance_get(q_c, q_i, q_yi, q_ym, q_img, q_f, q_l, q_r, lock_ser, cap_id, file_address, q_temp):
-    # 根据相机编号分配模型参数
-    global para_lines
-    global minCan, maxCan
+# def distance_get(q_c, q_i, q_yi, q_ym, q_img, q_f, q_l, q_r, lock_ser, cap_id, file_address, q_temp):
+#     # 根据相机编号分配模型参数
+#     global para_lines
+model_F = float(para_lines[0].strip('\n'))
+model_W = float(para_lines[1].strip('\n'))
+model_a = float(para_lines[2].strip('\n'))
+model_b = float(para_lines[3].strip('\n'))
+principal_x = int(para_lines[4].strip('\n'))
+principal_y = int(para_lines[5].strip('\n'))
 
-    model_F = float(para_lines[0].strip('\n'))
-    model_W = float(para_lines[1].strip('\n'))
-    model_a = float(para_lines[2].strip('\n'))
-    model_b = float(para_lines[3].strip('\n'))
-    principal_x = int(para_lines[4].strip('\n'))
-    principal_y = int(para_lines[5].strip('\n'))
+# # 循环处理图像
+# loop_num = 0
+# imu_roll = 0.0
+# imu_pitch = 0.0
+# imu_yaw = 0.0
+# while True:
 
-    # 循环处理图像
-    loop_num = 0
-    imu_roll = 0.0
-    imu_pitch = 0.0
-    imu_yaw = 0.0
-    while True:
-        start_time_total = time.time()
-        str_Time = datetime.datetime.now().strftime('%H%M%S-%f')
-        ret_mess = ''  # 数据信息
-        time_mess = ''  # 时间信息
 
-        # 获取图像及参数
-        start_time = time.time()
-        if not q_c.empty():
-            rgb_frame = q_c.get()
-            loop_num += 1
-        else:
-            continue
-        img_height = int(rgb_frame.shape[0])
-        img_width = int(rgb_frame.shape[1])
-        # mid_height = int(img_height / 2)
-        # mid_width = int(img_width / 2)
-        rgb_show = rgb_frame.copy()
-        # 获取偏航角
-        # if not q_i.empty():
-        #     jy_list = q_i.get()
-        #     imu_roll = jy_list[0]
-        #     imu_pitch = jy_list[1]
-        #     imu_yaw = jy_list[2]
-        end_time = time.time()
-        time_mess += 'Cap:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+start_time_total = time.time()
+str_Time = datetime.datetime.now().strftime('%H%M%S-%f')
+ret_mess = ''  # 数据信息
+time_mess = ''  # 时间信息
 
-        # 保留下半部分
-        start_time = time.time()
-        rgb_half = rgb_frame.copy()
-        rgb_half[0:principal_y - 5, :] = (0, 0, 0)
-        end_time = time.time()
-        time_mess += 'Hal:' + str(round((end_time - start_time) * 1000, 4)) + ';'
-        # 灰度并二值化
-        start_time = time.time()
-        gra_gray = cv2.cvtColor(rgb_half, cv2.COLOR_BGR2GRAY)
-        thre_gray, gra_threshold = cv2.threshold(gra_gray, 175, 255, cv2.THRESH_BINARY)
-        # cv2.imshow('thre', gra_threshold)
-        end_time = time.time()
-        time_mess += 'Gra:' + str(round((end_time - start_time) * 1000, 4)) + ';'
-        # Canny
-        start_time = time.time()
-        rgb_thres = np.zeros((img_height, img_width, 3), np.uint8)  # 创建个全0的黑背景
-        for j in range(0, img_width, 1):
-            for i in range(0, img_height, 1):
-                if gra_threshold[i, j] == 255:
-                    rgb_thres[i, j] = (255, 255, 255)
-                else:
-                    rgb_thres[i, j] = (0, 0, 0)
-        rgb_thres_hough = rgb_thres.copy()
-        gra_canny = cv2.Canny(rgb_half, 200, 500)
-        # cv2.imshow('canny', gra_canny)
-        end_time = time.time()
-        time_mess += 'Can:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+# 获取图像及参数
+start_time = time.time()
+# if not q_c.empty():
+#     rgb_frame = q_c.get()
+#     loop_num += 1
+# else:
+#     continue
 
-        # 获取水平和垂直线
-        start_time = time.time()
-        gra_edge_rot = gra_canny.copy()
-        gra_edge_rot[0:principal_y, :] = 0
-        lines = cv2.HoughLinesP(gra_edge_rot, rho=1.0, theta=np.pi / 180, threshold=150, minLineLength=150,
-                                maxLineGap=10)
-        end_time = time.time()
-        time_mess += 'Hou:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+cap = cv2.VideoCapture(0)
+cap.set(6, 1196444237)
+cap.set(3, 640)
+cap.set(4, 360)
+cap.set(5, 30)
+while True:
+    start_time = time.time()
+    ret, rgb_frame = cap.read()
 
-        # 旋转校正、拉平、融合
-        gra_hough = np.zeros((img_height, img_width), np.uint8)  # 创建个全0的黑背景
-        # 垂直线计算偏航角参数
-        ver_avg = 0.0
-        ver_weight = 0.0
-        ver_sum = 0.0
-        angles_ver = [0.0]
-        # 水平线计算偏航角参数
-        hor_avg = 0.0
-        hor_weight = 0.0
-        hor_sum = 0.0
-        angles_hor = [0.0]
+# rgb_frame = cv2.imread('./TestData/WIN_20221123_15_22_51_Pro.jpg')
 
-        num_ver = 0
-        num_hor = 0
-        # 提取浅色矩形参数
-        rectangles_front = [[0.0, 0.0, 0.0, 0.0]]  # 垂直矩形，0是左边，1是右边，2是下边，3是上边
-        rectangles_left = [[0.0, 0.0, 0.0, 0.0]]  # 垂直矩形，0是左边，1是右边，2是下边，3是上边
-        rectangles_right = [[0.0, 0.0, 0.0, 0.0]]  # 垂直矩形，0是左边，1是右边，2是下边，3是上边
-        lines_left = [[0.0, 0.0, 0.0]]  # 0是最接近中轴的w（x）值，1是最接近相机的h（y）值，2是最远离相机的h（y）值
-        lines_right = [[0.0, 0.0, 0.0]]  # 0是最接近中轴的w（x）值，1是最接近相机的h（y）值，2是最远离相机的h（y）值
-        num_dis_l = 0
-        num_dis_r = 0
-        lines_front = [[0.0, 0.0, 0.0]]  # 0是最接近相机的h（y）值，1是最左侧（最小）的w（x）值，2是最右侧（最大）的w（x）值
-        num_dis_f = 0
+    img_height = int(rgb_frame.shape[0])
+    img_width = int(rgb_frame.shape[1])
+    mid_height = int(img_height / 2)
+    mid_width = int(img_width / 2)
+    rgb_show = rgb_frame.copy()
+    # 获取偏航角
+    # if not q_i.empty():
+    #     jy_list = q_i.get()
+    #     imu_roll = jy_list[0]
+    #     imu_pitch = jy_list[1]
+    #     imu_yaw = jy_list[2]
+    end_time = time.time()
+    time_mess += 'Cap:' + str(round((end_time - start_time) * 1000, 4)) + ';'
 
-        try:
-            if lines is not None:
-                start_time = time.time()
-                # 初次计算偏航角
-                for line in lines:
-                    for x1_p, y1_p, x2_p, y2_p in line:
-                        if CVFunc.getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 100.0:
-                            # cv2.line(gra_hough, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
-                            # 根据偏航角进行旋转
-                            h1 = CVFunc.calc_horizontal(y1_p, model_F, model_W, model_a, model_b)
-                            h2 = CVFunc.calc_horizontal(y2_p, model_F, model_W, model_a, model_b)
-                            w1 = CVFunc.calc_vertical((x1_p - principal_x), y1_p, model_F, model_W, model_a, model_b)
-                            w2 = CVFunc.calc_vertical((x2_p - principal_x), y2_p, model_F, model_W, model_a, model_b)
-                            # 水平距离200、垂直距离100以内
-                            # if (h1 < 200 or h2 < 200) and (abs(w1) < 200 or abs(w2) < 200):
+    # 保留下半部分
+    start_time = time.time()
+    rgb_half = rgb_frame.copy()
+    rgb_half[0:principal_y - 2, :] = (0, 0, 0)
+    end_time = time.time()
+    time_mess += 'Hal:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+    # 灰度并二值化
+    start_time = time.time()
+    gra_gray = cv2.cvtColor(rgb_half, cv2.COLOR_BGR2GRAY)
+    thre_gray, gra_threshold = cv2.threshold(gra_gray, 160, 255, cv2.THRESH_BINARY)
+    end_time = time.time()
+    time_mess += 'Gra:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+    # Canny
+    start_time = time.time()
+    rgb_thres = cv2.cvtColor(gra_threshold, cv2.COLOR_GRAY2BGR)
+    rgb_thres_hough = rgb_thres.copy()
+    gra_canny = cv2.Canny(rgb_half, 200, 500)
+    end_time = time.time()
+    time_mess += 'Can:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+
+    # 获取水平和垂直线
+    start_time = time.time()
+    gra_edge_rot = gra_canny.copy()
+    gra_edge_rot[0:principal_y, :] = 0
+    lines = cv2.HoughLinesP(gra_edge_rot, rho=1.0, theta=np.pi / 180, threshold=50, minLineLength=50,
+                            maxLineGap=5)
+    end_time = time.time()
+    time_mess += 'Hou:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+
+    # 旋转校正、拉平、融合
+    gra_hough = np.zeros((img_height, img_width), np.uint8)  # 创建个全0的黑背景
+    # 垂直线计算偏航角参数
+    ver_avg = 0.0
+    ver_weight = 0.0
+    ver_sum = 0.0
+    angles_ver = [0.0]
+    # 水平线计算偏航角参数
+    hor_avg = 0.0
+    hor_weight = 0.0
+    hor_sum = 0.0
+    angles_hor = [0.0]
+
+    num_ver = 0
+    num_hor = 0
+    # 提取浅色矩形参数
+    rectangles_front = [[0.0, 0.0, 0.0, 0.0]]  # 垂直矩形，0是左边，1是右边，2是底边，3是顶边
+    rectangles_left = [[0.0, 0.0, 0.0, 0.0]]  # 垂直矩形，0是左边，1是右边，2是底边，3是顶边
+    rectangles_right = [[0.0, 0.0, 0.0, 0.0]]  # 垂直矩形，0是左边，1是右边，2是底边，3是顶边
+    lines_left = [[0.0, 0.0, 0.0]]  # 0是最接近中轴的w（x）值，1是最接近相机的h（y）值，2是最远离相机的h（y）值
+    lines_right = [[0.0, 0.0, 0.0]]  # 0是最接近中轴的w（x）值，1是最接近相机的h（y）值，2是最远离相机的h（y）值
+    num_dis_l = 0
+    num_dis_r = 0
+    lines_front = [[0.0, 0.0, 0.0]]  # 0是最接近相机的h（y）值，1是最左侧（最小）的w（x）值，2是最右侧（最大）的w（x）值
+    num_dis_f = 0
+
+    try:
+        if lines is not None:
+            start_time = time.time()
+            # 初次计算偏航角
+            for line in lines:
+                for x1_p, y1_p, x2_p, y2_p in line:
+                    if CVFunc.getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 50.0:
+                        # cv2.line(gra_hough, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
+                        # 根据偏航角进行旋转
+                        h1 = CVFunc.calc_horizontal(y1_p, model_F, model_W, model_a, model_b)
+                        h2 = CVFunc.calc_horizontal(y2_p, model_F, model_W, model_a, model_b)
+                        w1 = CVFunc.calc_vertical((x1_p - principal_x), y1_p, model_F, model_W, model_a, model_b)
+                        w2 = CVFunc.calc_vertical((x2_p - principal_x), y2_p, model_F, model_W, model_a, model_b)
+                        # 水平距离200、垂直距离100以内
+                        if (h1 < 200 or h2 < 200) and (abs(w1) < 200 or abs(w2) < 200):
+                            # cv2.line(rgb_thres_hough, (x1_p, y1_p), (x2_p, y2_p), (0, 0, 255), 2)
                             if h1 != h2:
                                 angle_tan = np.arctan((w1 - w2) / (h2 - h1)) * 57.29577
                             else:
                                 angle_tan = 90.0
 
-                            x_mid = int((x1_p + x2_p) / 2)
-                            y_mid = int((y1_p + y2_p) / 2)
-
-                            cv2.line(gra_hough, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
-                            cv2.putText(gra_hough, str(round(angle_tan, 2)), (x_mid, y_mid),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, 255, 1)
+                            # x_mid = int((x1_p + x2_p) / 2)
+                            # y_mid = int((y1_p + y2_p) / 2)
+                            # cv2.line(gra_hough, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
+                            # cv2.putText(gra_hough, str(round(angle_tan, 2)), (x_mid, y_mid),
+                            #             cv2.FONT_HERSHEY_SIMPLEX, 0.6, 255, 1)
 
                             if abs(angle_tan) < 45:
                                 ver_sum += angle_tan
@@ -239,175 +310,191 @@ def distance_get(q_c, q_i, q_yi, q_ym, q_img, q_f, q_l, q_r, lock_ser, cap_id, f
                                 else:
                                     num_hor += 1
                                     angles_hor.append(angle_tan)
-                # 算数平均垂直线角度计算视觉偏航角
-                if num_ver > 0:
-                    temp_avg = ver_sum / num_ver
-                    for angle_ver in angles_ver:
-                        if abs(temp_avg - angle_ver) < 10.0:
-                            ver_avg += angle_ver
-                            ver_weight += 1
-                    if ver_weight > 0:
-                        ver_avg = ver_avg / ver_weight
-                print(ver_avg)
-                # if num_hor > 0:
-                #     temp_avg = hor_sum / num_hor
-                #     for angle_hor in angles_hor:
-                #         if abs(temp_avg - angle_hor) < 10.0:
-                #             hor_avg += angle_hor
-                #             hor_weight += 1
-                #     if hor_weight > 0:
-                #         hor_avg = hor_avg / hor_weight
+            # 算数平均垂直线角度计算视觉偏航角
+            if num_ver > 0:
+                temp_avg = ver_sum / num_ver
+                for angle_ver in angles_ver:
+                    if abs(temp_avg - angle_ver) < 10.0:
+                        ver_avg += angle_ver
+                        ver_weight += 1
+                if ver_weight > 0:
+                    ver_avg = ver_avg / ver_weight
+            # if num_hor > 0:
+            #     temp_avg = hor_sum / num_hor
+            #     for angle_hor in angles_hor:
+            #         if abs(temp_avg - angle_hor) < 10.0:
+            #             hor_avg += angle_hor
+            #             hor_weight += 1
+            #     if hor_weight > 0:
+            #         hor_avg = hor_avg / hor_weight
 
-                # 根据垂直线角度和水平线角度，输出偏航角yaw_avg，统一为偏左为负，偏右为正
-                # 如果计算了偏航角，则反馈给IMU进程和计算进程
-                if ver_avg != 0.0:
-                    yaw_avg = ver_avg
-                    q_yi.put(yaw_avg)
-                    q_yi.get() if q_yi.qsize() > 1 else time.sleep(0.005)
-                    q_ym.put(round(yaw_avg, 2))
-                    q_ym.get() if q_ym.qsize() > 1 else time.sleep(0.005)
-                # elif hor_avg != 0.0:
-                #     yaw_avg = hor_avg - 90.0
-                else:
-                    yaw_avg = 0.0
+            # 根据垂直线角度和水平线角度，输出偏航角yaw_avg，统一为偏左为负，偏右为正
+            # 如果计算了偏航角，则反馈给IMU进程和计算进程
+            if ver_avg != 0.0:
+                yaw_avg = ver_avg
+            #     q_yi.put(yaw_avg)
+            #     q_yi.get() if q_yi.qsize() > 1 else time.sleep(0.005)
+            #     q_ym.put(round(yaw_avg, 2))
+            #     q_ym.get() if q_ym.qsize() > 1 else time.sleep(0.005)
+            # elif hor_avg != 0.0:
+            #     yaw_avg = hor_avg - 90.0
+            else:
+                yaw_avg = 0.0
+            end_time = time.time()
+            time_mess += 'Yaw:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+
+            # 如果识别到了偏航角，则进行旋转校正
+            if yaw_avg != 0.0:
+                # 用均值的±10范围剔除误差数据，更新垂直线和水平线的角度。垂直线是-45至45，水平线是45至135
+                start_time = time.time()
+                for line in lines:
+                    for x1_p, y1_p, x2_p, y2_p in line:
+                        if CVFunc.getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 100.0:
+                            h1 = CVFunc.calc_horizontal(y1_p, model_F, model_W, model_a, model_b)
+                            h2 = CVFunc.calc_horizontal(y2_p, model_F, model_W, model_a, model_b)
+                            w1 = CVFunc.calc_vertical((x1_p - principal_x), y1_p, model_F, model_W, model_a,
+                                                      model_b)
+                            w2 = CVFunc.calc_vertical((x2_p - principal_x), y2_p, model_F, model_W, model_a,
+                                                      model_b)
+                            # 水平距离1000、垂直距离600以内，根据偏航角进行旋转
+                            if (h1 < 1000 and h2 < 1000) and (abs(w1) < 700 and abs(w2) < 700):
+                                if h1 != h2:
+                                    angle_tan = np.arctan((w1 - w2) / (h2 - h1)) * 57.29577
+                                else:
+                                    angle_tan = 90.0
+                                x1_imu, y1_imu = CVFunc.points_rotate(yaw_avg, w1, h1)
+                                x2_imu, y2_imu = CVFunc.points_rotate(yaw_avg, w2, h2)
+                                # 在yaw的均值±10内，认定为垂直线或水平线，拉直
+                                if abs(angle_tan) < 45.0:
+                                    if abs(angle_tan - ver_avg) < 10.0:
+                                        cv2.line(gra_hough, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
+                                        # temp_value = str(x1_imu) + '-' + str(x2_imu)
+                                        # x_mid = int((x1_p + x2_p) / 2)
+                                        # y_mid = int((y1_p + y2_p) / 2)
+                                        # cv2.line(rgb_thres_hough, (x1_p, y1_p), (x2_p, y2_p), (0, 0, 255), 2)
+                                        # cv2.putText(rgb_thres_hough, temp_value, (x_mid, y_mid),
+                                        #             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 1)
+                                        # print('Ver:' + temp_value)
+                                        # 垂直线,按照最接近中轴来拉直
+                                        if abs(x1_imu) > abs(x2_imu):
+                                            x1_imu = x2_imu
+                                        else:
+                                            x2_imu = x1_imu
+                                        temp_button = min(y1_imu, y2_imu)
+                                        temp_top = max(y1_imu, y2_imu)
+                                        # 分别存进左右线段数组
+                                        if x1_imu < 0.0:
+                                            if num_dis_l == 0:
+                                                lines_left[0] = [x1_imu, temp_button, temp_top]
+                                                num_dis_l = 1
+                                            else:
+                                                lines_left.append([x1_imu, temp_button, temp_top])
+                                                num_dis_l += 1
+                                        else:
+                                            if num_dis_r == 0:
+                                                lines_right[0] = [x1_imu, temp_button, temp_top]
+                                                num_dis_r = 1
+                                            else:
+                                                lines_right.append([x1_imu, temp_button, temp_top])
+                                                num_dis_r += 1
+                                # elif ((400 < h1 or h2 < 800) and abs(w1 - w2) < 200) or (
+                                #         h1 or h2 <= 400 and abs(w1 - w2) < 75):
+                                else:
+                                    if angle_tan <= -45.0:
+                                        angle_tan = 180.0 + angle_tan
+                                    angle_tan = angle_tan - 90.0
+
+                                    if abs(angle_tan - yaw_avg) < 10.0:
+                                        cv2.line(gra_hough, (x1_p, y1_p), (x2_p, y2_p), 255, 1)
+                                        # temp_value = str(y1_imu) + '-' + str(y2_imu)
+                                        # x_mid = int((x1_p + x2_p) / 2)
+                                        # y_mid = int((y1_p + y2_p) / 2)
+                                        # cv2.line(rgb_thres_hough, (x1_p, y1_p), (x2_p, y2_p), (0, 255, 0), 2)
+                                        # cv2.putText(rgb_thres_hough, temp_value, (x_mid, y_mid),
+                                        #             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 1)
+                                        # print('Hor:' + temp_value)
+                                        # 水平线,按照最接近相机来拉平
+                                        if abs(y1_imu) > abs(y2_imu):
+                                            y1_imu = y2_imu
+                                        else:
+                                            y2_imu = y1_imu
+                                        temp_left = min(x1_imu, x2_imu)
+                                        temp_right = max(x1_imu, x2_imu)
+                                        # 存进前向线段数组
+                                        if num_dis_f == 0:
+                                            lines_front[0] = [y1_imu, temp_left, temp_right]
+                                            num_dis_f = 1
+                                        else:
+                                            lines_front.append([y1_imu, temp_left, temp_right])
+                                            num_dis_f += 1
                 end_time = time.time()
-                time_mess += 'Yaw:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+                time_mess += 'Lin:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+                start_time = time.time()
+                # 从左向右，根据左侧线段建立左侧矩形
+                if num_dis_l > 1:
+                    lines_left.sort(reverse=False)
+                    rectangles_left[0] = [lines_left[0][0], lines_left[0][0], lines_left[0][1], lines_left[0][2]]
+                    for line_l in lines_left:
+                        has_change = False
+                        for rect_l in rectangles_left:
+                            if 0.0 < line_l[0] - rect_l[1] <= 25.0:
+                                temp_left = rect_l[0]
+                                temp_right = line_l[0]
+                                temp_button = rect_l[2]
+                                temp_top = rect_l[3]
+                                temp_width = abs(temp_right - temp_left)
+                                temp_length = temp_top - temp_button
 
-                # 如果识别到了偏航角，则进行旋转校正
-                if yaw_avg != 0.0:
-                    # 用均值的±10范围剔除误差数据，更新垂直线和水平线的角度。垂直线是-45至45，水平线是45至135
-                    start_time = time.time()
-                    for line in lines:
-                        for x1_p, y1_p, x2_p, y2_p in line:
-                            if CVFunc.getDist_P2P(x1_p, y1_p, x2_p, y2_p) > 100.0:
-                                h1 = CVFunc.calc_horizontal(y1_p, model_F, model_W, model_a, model_b)
-                                h2 = CVFunc.calc_horizontal(y2_p, model_F, model_W, model_a, model_b)
-                                w1 = CVFunc.calc_vertical((x1_p - principal_x), y1_p, model_F, model_W, model_a,
-                                                          model_b)
-                                w2 = CVFunc.calc_vertical((x2_p - principal_x), y2_p, model_F, model_W, model_a,
-                                                          model_b)
-                                # 水平距离1000、垂直距离600以内，根据偏航角进行旋转
-                                if (h1 < 1000 and h2 < 1000) and (abs(w1) < 700 and abs(w2) < 700):
-                                    if h1 != h2:
-                                        angle_tan = np.arctan((w1 - w2) / (h2 - h1)) * 57.29577
-                                    else:
-                                        angle_tan = 90.0
-                                    x1_imu, y1_imu = CVFunc.points_rotate(yaw_avg, w1, h1)
-                                    x2_imu, y2_imu = CVFunc.points_rotate(yaw_avg, w2, h2)
-                                    # 在yaw的均值±10内，认定为垂直线或水平线，拉直
-                                    if abs(angle_tan) < 45.0:
-                                        if abs(angle_tan - ver_avg) < 10.0:
-                                            # 垂直线,按照最接近中轴来拉直
-                                            if abs(x1_imu) > abs(x2_imu):
-                                                x1_imu = x2_imu
-                                            else:
-                                                x2_imu = x1_imu
-                                            temp_button = min(y1_imu, y2_imu)
-                                            temp_top = max(y1_imu, y2_imu)
-                                            # 分别存进左右线段数组
-                                            if x1_imu < 0.0:
-                                                if num_dis_l == 0:
-                                                    lines_left[0] = [x1_imu, temp_button, temp_top]
-                                                    num_dis_l = 1
-                                                else:
-                                                    lines_left.append([x1_imu, temp_button, temp_top])
-                                                    num_dis_l += 1
-                                            else:
-                                                if num_dis_r == 0:
-                                                    lines_right[0] = [x1_imu, temp_button, temp_top]
-                                                    num_dis_r = 1
-                                                else:
-                                                    lines_right.append([x1_imu, temp_button, temp_top])
-                                                    num_dis_r += 1
-                                    elif ((400 < h1 or h2 < 800) and abs(w1 - w2) < 200) or (
-                                            h1 or h2 <= 400 and abs(w1 - w2) < 75):
-                                        if angle_tan <= -45.0:
-                                            angle_tan = 180.0 + angle_tan
-                                        angle_tan = angle_tan - 90.0
-
-                                        if abs(angle_tan - yaw_avg) < 10.0:
-                                            # 水平线,按照最接近相机来拉平
-                                            if abs(y1_imu) > abs(y2_imu):
-                                                y1_imu = y2_imu
-                                            else:
-                                                y2_imu = y1_imu
-                                            temp_left = min(x1_imu, x2_imu)
-                                            temp_right = max(x1_imu, x2_imu)
-                                            # 存进前向线段数组
-                                            if num_dis_f == 0:
-                                                lines_front[0] = [y1_imu, temp_left, temp_right]
-                                                num_dis_f = 1
-                                            else:
-                                                lines_front.append([y1_imu, temp_left, temp_right])
-                                                num_dis_f += 1
-                    end_time = time.time()
-                    time_mess += 'Lin:' + str(round((end_time - start_time) * 1000, 4)) + ';'
-                    start_time = time.time()
-                    # 从左向右，根据左侧线段建立左侧矩形
-                    if num_dis_l > 1:
-                        lines_left.sort(reverse=False)
-                        rectangles_left[0] = [lines_left[0][0], lines_left[0][0], lines_left[0][1], lines_left[0][2]]
-                        for line_l in lines_left:
-                            has_change = False
-                            for rect_l in rectangles_left:
-                                if 0.0 < line_l[0] - rect_l[1] <= 25.0:
-                                    temp_left = rect_l[0]
-                                    temp_right = line_l[0]
-                                    temp_button = rect_l[2]
-                                    temp_top = rect_l[3]
-                                    temp_width = abs(temp_right - temp_left)
-                                    temp_length = temp_top - temp_button
-
-                                    num_list_255 = 0
-                                    num_list_0 = 0
-                                    w1_s = temp_left
-                                    w2_s = temp_right
-                                    for i in range(1, 6, 1):
-                                        h_s = temp_top - temp_length * i / 6
-                                        x1_s, y1_s = CVFunc.points_dis2xy(yaw_avg, w1_s, h_s, model_F, model_W,
-                                                                          model_a, model_b, principal_x)
-                                        x2_s, y2_s = CVFunc.points_dis2xy(yaw_avg, w2_s, h_s, model_F, model_W,
-                                                                          model_a, model_b, principal_x)
-                                        if y1_s >= img_height:
-                                            y1_s = img_height - 1
-                                        if x1_s <= 0:
-                                            x1_s = 1
-                                        elif x1_s >= img_width:
-                                            x1_s = img_width - 1
-                                        if y2_s >= img_height:
-                                            y2_s = img_height - 1
-                                        if x2_s <= 0:
-                                            x2_s = 1
-                                        elif x2_s >= img_width:
-                                            x2_s = img_width - 1
-                                        num_255 = 0
-                                        num_0 = 0
-                                        for x12_s in range(min(x1_s, x2_s), max(x1_s, x2_s), 1):
-                                            if gra_threshold[y1_s, x12_s] == 255:
-                                                num_255 += 1
-                                            else:
-                                                num_0 += 1
-                                        if num_255 + num_0 > 0:
-                                            if num_255 / (num_0 + num_255) > 0.8:  # 如果采样点中白色多于80%
-                                                num_list_255 += 1
-                                            else:
-                                                num_list_0 += 1
-                                    if num_list_255 > num_list_0:
-                                        has_change = True
-                                        rect_l[1] = line_l[0]
-                                        if line_l[1] < rect_l[2]:
-                                            rect_l[2] = line_l[1]
-                                        if line_l[2] > rect_l[3]:
-                                            rect_l[3] = line_l[2]
-
-                                elif rect_l[1] == line_l[0]:
+                                num_list_255 = 0
+                                num_list_0 = 0
+                                w1_s = temp_left
+                                w2_s = temp_right
+                                for i in range(1, 4, 1):
+                                    h_s = temp_top - temp_length * i / 4
+                                    x1_s, y1_s = CVFunc.points_dis2xy(yaw_avg, w1_s, h_s, model_F, model_W,
+                                                                      model_a, model_b, principal_x)
+                                    x2_s, y2_s = CVFunc.points_dis2xy(yaw_avg, w2_s, h_s, model_F, model_W,
+                                                                      model_a, model_b, principal_x)
+                                    if y1_s >= img_height:
+                                        y1_s = img_height - 1
+                                    if x1_s <= 0:
+                                        x1_s = 1
+                                    elif x1_s >= img_width:
+                                        x1_s = img_width - 1
+                                    if y2_s >= img_height:
+                                        y2_s = img_height - 1
+                                    if x2_s <= 0:
+                                        x2_s = 1
+                                    elif x2_s >= img_width:
+                                        x2_s = img_width - 1
+                                    num_255 = 0
+                                    num_0 = 0
+                                    for x12_s in range(min(x1_s, x2_s), max(x1_s, x2_s), 1):
+                                        if gra_threshold[y1_s, x12_s] == 255:
+                                            num_255 += 1
+                                        else:
+                                            num_0 += 1
+                                    if num_255 + num_0 > 0:
+                                        if num_255 / (num_0 + num_255) > 0.8:  # 如果采样点中白色多于80%
+                                            num_list_255 += 1
+                                        else:
+                                            num_list_0 += 1
+                                if num_list_255 > num_list_0:
                                     has_change = True
+                                    rect_l[1] = line_l[0]
                                     if line_l[1] < rect_l[2]:
                                         rect_l[2] = line_l[1]
                                     if line_l[2] > rect_l[3]:
                                         rect_l[3] = line_l[2]
-                            if not has_change:
-                                rectangles_left.append([line_l[0], line_l[0], line_l[1], line_l[2]])
+
+                            elif rect_l[1] == line_l[0]:
+                                has_change = True
+                                if line_l[1] < rect_l[2]:
+                                    rect_l[2] = line_l[1]
+                                if line_l[2] > rect_l[3]:
+                                    rect_l[3] = line_l[2]
+                        if not has_change:
+                            rectangles_left.append([line_l[0], line_l[0], line_l[1], line_l[2]])
                     # 合并左侧相交的矩形或直线
                     if len(rectangles_left) > 1:
                         rectangles_left.sort(reverse=False)
@@ -415,585 +502,619 @@ def distance_get(q_c, q_i, q_yi, q_ym, q_img, q_f, q_l, q_r, lock_ser, cap_id, f
                         i = 0
                         while i < num_rect_l - 2:
                             j = i + 1
-                            while j < num_rect_l - 1 and j <= i + 2:
-                                if rectangles_left[i][0] - 2 <= rectangles_left[j][0] <= rectangles_left[i][1] + 2:
-                                    rectangles_left[i][0] = min(rectangles_left[i][0], rectangles_left[j][0])
-                                    rectangles_left[i][1] = max(rectangles_left[i][1], rectangles_left[j][1])
-                                    rectangles_left[i][2] = min(rectangles_left[i][2], rectangles_left[j][2])
-                                    rectangles_left[i][3] = max(rectangles_left[i][3], rectangles_left[j][3])
-                                    del rectangles_left[j]
-                                    num_rect_l = num_rect_l - 1
-                                else:
-                                    j += 1
+                            # while j < num_rect_l - 1 and j <= i + 2:
+                            if rectangles_left[i][0] <= rectangles_left[j][0] <= rectangles_left[i][1]:
+                                rectangles_left[i][0] = min(rectangles_left[i][0], rectangles_left[j][0])
+                                rectangles_left[i][1] = max(rectangles_left[i][1], rectangles_left[j][1])
+                                rectangles_left[i][2] = min(rectangles_left[i][2], rectangles_left[j][2])
+                                rectangles_left[i][3] = max(rectangles_left[i][3], rectangles_left[j][3])
+                                del rectangles_left[j]
+                                num_rect_l = num_rect_l - 1
+                                # else:
+                                #     j += 1
                             i += 1
 
-                    # 从右向左，根据右侧线段建立右侧矩形
-                    if num_dis_r > 0:
-                        lines_right.sort(reverse=True)
-                        rectangles_right[0] = [lines_right[0][0], lines_right[0][0], lines_right[0][1],
-                                               lines_right[0][2]]
-                        for line_r in lines_right:
-                            has_change = False
-                            for rect_r in rectangles_right:
-                                if 0.0 < rect_r[0] - line_r[0] <= 25.0:
-                                    temp_left = line_r[0]
-                                    temp_right = rect_r[1]
-                                    temp_button = rect_r[2]
-                                    temp_top = rect_r[3]
-                                    temp_width = abs(temp_right - temp_left)
-                                    temp_length = temp_top - temp_button
+                # 从右向左，根据右侧线段建立右侧矩形
+                if num_dis_r > 0:
+                    lines_right.sort(reverse=True)
+                    rectangles_right[0] = [lines_right[0][0], lines_right[0][0], lines_right[0][1],
+                                           lines_right[0][2]]
+                    for line_r in lines_right:
+                        has_change = False
+                        for rect_r in rectangles_right:
+                            if 0.0 < rect_r[0] - line_r[0] <= 25.0:
+                                temp_left = line_r[0]
+                                temp_right = rect_r[1]
+                                temp_button = rect_r[2]
+                                temp_top = rect_r[3]
+                                temp_width = abs(temp_right - temp_left)
+                                temp_length = temp_top - temp_button
 
-                                    num_list_255 = 0
-                                    num_list_0 = 0
-                                    w1_s = temp_left
-                                    w2_s = temp_right
-                                    for i in range(1, 6, 1):
-                                        h_s = temp_top - temp_length * i / 6
-                                        x1_s, y1_s = CVFunc.points_dis2xy(yaw_avg, w1_s, h_s, model_F, model_W,
-                                                                          model_a, model_b, principal_x)
-                                        x2_s, y2_s = CVFunc.points_dis2xy(yaw_avg, w2_s, h_s, model_F, model_W,
-                                                                          model_a, model_b, principal_x)
-                                        if y1_s >= img_height:
-                                            y1_s = img_height - 1
-                                        if x1_s <= 0:
-                                            x1_s = 1
-                                        elif x1_s >= img_width:
-                                            x1_s = img_width - 1
-                                        if y2_s >= img_height:
-                                            y2_s = img_height - 1
-                                        if x2_s <= 0:
-                                            x2_s = 1
-                                        elif x2_s >= img_width:
-                                            x2_s = img_width - 1
-                                        num_255 = 0
-                                        num_0 = 0
-                                        for x12_s in range(min(x1_s, x2_s), max(x1_s, x2_s), 1):
-                                            if gra_threshold[y1_s, x12_s] == 255:
-                                                num_255 += 1
-                                            else:
-                                                num_0 += 1
-                                        if num_255 + num_0 > 0:
-                                            if num_255 / (num_0 + num_255) > 0.8:  # 如果采样点中白色多于80%
-                                                num_list_255 += 1
-                                            else:
-                                                num_list_0 += 1
-                                    if num_list_255 > num_list_0:
-                                        has_change = True
-                                        rect_r[0] = line_r[0]
-                                        rect_r[2] = min(line_r[1], rect_r[2])
-                                        rect_r[3] = max(line_r[2], rect_r[3])
-                                elif rect_r[0] == line_r[0]:
+                                num_list_255 = 0
+                                num_list_0 = 0
+                                w1_s = temp_left
+                                w2_s = temp_right
+                                for i in range(3, 6, 1):
+                                    h_s = temp_top - temp_length * i / 6
+                                    x1_s, y1_s = CVFunc.points_dis2xy(yaw_avg, w1_s, h_s, model_F, model_W,
+                                                                      model_a, model_b, principal_x)
+                                    x2_s, y2_s = CVFunc.points_dis2xy(yaw_avg, w2_s, h_s, model_F, model_W,
+                                                                      model_a, model_b, principal_x)
+                                    if y1_s >= img_height:
+                                        y1_s = img_height - 1
+                                    if x1_s <= 0:
+                                        x1_s = 1
+                                    elif x1_s >= img_width:
+                                        x1_s = img_width - 1
+                                    if y2_s >= img_height:
+                                        y2_s = img_height - 1
+                                    if x2_s <= 0:
+                                        x2_s = 1
+                                    elif x2_s >= img_width:
+                                        x2_s = img_width - 1
+                                    num_255 = 0
+                                    num_0 = 0
+                                    for x12_s in range(min(x1_s, x2_s), max(x1_s, x2_s), 1):
+                                        if gra_threshold[y1_s, x12_s] == 255:
+                                            num_255 += 1
+                                        else:
+                                            num_0 += 1
+                                    if num_255 + num_0 > 0:
+                                        if num_255 / (num_0 + num_255) > 0.8:  # 如果采样点中白色多于80%
+                                            num_list_255 += 1
+                                        else:
+                                            num_list_0 += 1
+                                if num_list_255 > num_list_0:
                                     has_change = True
+                                    rect_r[0] = line_r[0]
                                     rect_r[2] = min(line_r[1], rect_r[2])
                                     rect_r[3] = max(line_r[2], rect_r[3])
-                            if not has_change:
-                                rectangles_right.append([line_r[0], line_r[0], line_r[1], line_r[2]])
+                            elif rect_r[0] == line_r[0]:
+                                has_change = True
+                                rect_r[2] = min(line_r[1], rect_r[2])
+                                rect_r[3] = max(line_r[2], rect_r[3])
+                        if not has_change:
+                            rectangles_right.append([line_r[0], line_r[0], line_r[1], line_r[2]])
                     # 合并右侧相交的矩形或直线
                     if len(rectangles_right) > 1:
                         num_rect_r = len(rectangles_right)
                         i = 0
                         while i < num_rect_r - 2:
                             j = i + 1
-                            while j < num_rect_r - 1 and j <= i + 2:
-                                if rectangles_right[i][0] - 2 <= rectangles_right[j][1] <= rectangles_right[i][1] + 2:
-                                    rectangles_right[i][0] = min(rectangles_right[i][0], rectangles_right[j][0])
-                                    rectangles_right[i][1] = max(rectangles_right[i][1], rectangles_right[j][1])
-                                    rectangles_right[i][2] = min(rectangles_right[i][2], rectangles_right[j][2])
-                                    rectangles_right[i][3] = max(rectangles_right[i][3], rectangles_right[j][3])
-                                    del rectangles_right[j]
-                                    num_rect_r = num_rect_r - 1
-                                else:
-                                    j += 1
+                            # while j < num_rect_r - 1 and j <= i + 2:
+                            if rectangles_right[i][0] <= rectangles_right[j][1] <= rectangles_right[i][1]:
+                                rectangles_right[i][0] = min(rectangles_right[i][0], rectangles_right[j][0])
+                                rectangles_right[i][1] = max(rectangles_right[i][1], rectangles_right[j][1])
+                                rectangles_right[i][2] = min(rectangles_right[i][2], rectangles_right[j][2])
+                                rectangles_right[i][3] = max(rectangles_right[i][3], rectangles_right[j][3])
+                                del rectangles_right[j]
+                                num_rect_r = num_rect_r - 1
+                                # else:
+                                #     j += 1
                             i += 1
 
-                    # 从近到远，根据最近线段建立前向矩形
-                    if num_dis_f > 1:
-                        lines_front.sort(reverse=False)
-                        rectangles_front[0] = [lines_front[0][1], lines_front[0][2], lines_front[0][0],
-                                               lines_front[0][0]]
-                        for line_f in lines_front:
-                            has_change = False
-                            for rect_f in rectangles_front:
-                                if 0.0 < line_f[0] - rect_f[3] <= 30.0:
-                                    temp_left = rect_f[0]
-                                    temp_right = rect_f[1]
-                                    temp_button = rect_f[2]
-                                    temp_top = line_f[0]
-                                    temp_width = temp_right - temp_left
-                                    temp_length = temp_top - temp_button
+                # 从近到远，根据最近线段建立前向矩形
+                if num_dis_f > 1:
+                    lines_front.sort(reverse=False)
+                    rectangles_front[0] = [lines_front[0][1], lines_front[0][2], lines_front[0][0],
+                                           lines_front[0][0]]
+                    for line_f in lines_front:
+                        has_change = False
+                        for rect_f in rectangles_front:
+                            if 0.0 < line_f[0] - rect_f[3] <= 30.0:
+                                temp_left = rect_f[0]
+                                temp_right = rect_f[1]
+                                temp_button = rect_f[2]
+                                temp_top = line_f[0]
+                                temp_width = temp_right - temp_left
+                                temp_length = temp_top - temp_button
 
-                                    num_list_255 = 0
-                                    num_list_0 = 0
-                                    h1_s = temp_top
-                                    h2_s = temp_button
-                                    for i in range(1, 4, 1):
-                                        w_s = temp_left + temp_width * i / 4
-                                        x1_s, y1_s = CVFunc.points_dis2xy(yaw_avg, w_s, h1_s, model_F, model_W,
-                                                                          model_a, model_b, principal_x)
-                                        x2_s, y2_s = CVFunc.points_dis2xy(yaw_avg, w_s, h2_s, model_F, model_W,
-                                                                          model_a, model_b, principal_x)
-                                        if y1_s >= img_height:
-                                            y1_s = img_height - 1
-                                        if x1_s <= 0:
-                                            x1_s = 1
-                                        elif x1_s >= img_width:
-                                            x1_s = img_width - 1
-                                        if y2_s >= img_height:
-                                            y2_s = img_height - 1
-                                        if x2_s <= 0:
-                                            x2_s = 1
-                                        elif x2_s >= img_width:
-                                            x2_s = img_width - 1
-                                        num_255 = 0
-                                        num_0 = 0
-                                        for y12_s in range(min(y1_s, y2_s), max(y1_s, y2_s), 1):
-                                            if gra_threshold[y12_s, x1_s] == 255:
-                                                num_255 += 1
-                                            else:
-                                                num_0 += 1
-                                        if num_255 + num_0 > 0:
-                                            if num_255 / (num_0 + num_255) > 0.8:  # 如果采样点中白色多于80%
-                                                num_list_255 += 1
-                                            else:
-                                                num_list_0 += 1
-                                    if num_list_255 > num_list_0:
-                                        has_change = True
-                                        rect_f[2] = line_f[0]
-                                        rect_f[0] = min(rect_f[0], line_f[1])
-                                        rect_f[1] = max(rect_f[1], line_f[2])
-                                elif rect_f[2] <= line_f[0] <= rect_f[3]:
+                                num_list_255 = 0
+                                num_list_0 = 0
+                                h1_s = temp_top
+                                h2_s = temp_button
+                                for i in range(3, 6, 1):
+                                    w_s = temp_left + temp_width * i / 6
+                                    x1_s, y1_s = CVFunc.points_dis2xy(yaw_avg, w_s, h1_s, model_F, model_W,
+                                                                      model_a, model_b, principal_x)
+                                    x2_s, y2_s = CVFunc.points_dis2xy(yaw_avg, w_s, h2_s, model_F, model_W,
+                                                                      model_a, model_b, principal_x)
+                                    if y1_s >= img_height:
+                                        y1_s = img_height - 1
+                                    if x1_s <= 0:
+                                        x1_s = 1
+                                    elif x1_s >= img_width:
+                                        x1_s = img_width - 1
+                                    if y2_s >= img_height:
+                                        y2_s = img_height - 1
+                                    if x2_s <= 0:
+                                        x2_s = 1
+                                    elif x2_s >= img_width:
+                                        x2_s = img_width - 1
+                                    num_255 = 0
+                                    num_0 = 0
+                                    for y12_s in range(min(y1_s, y2_s), max(y1_s, y2_s), 1):
+                                        if gra_threshold[y12_s, x1_s] == 255:
+                                            num_255 += 1
+                                        else:
+                                            num_0 += 1
+                                    if num_255 + num_0 > 0:
+                                        if num_255 / (num_0 + num_255) > 0.8:  # 如果采样点中白色多于80%
+                                            num_list_255 += 1
+                                        else:
+                                            num_list_0 += 1
+                                if num_list_255 > num_list_0:
                                     has_change = True
+                                    rect_f[2] = line_f[0]
                                     rect_f[0] = min(rect_f[0], line_f[1])
                                     rect_f[1] = max(rect_f[1], line_f[2])
-                            if not has_change:
-                                rectangles_front.append([line_f[1], line_f[2], line_f[0], line_f[0]])
-                    # 合并相交的矩形或直线
-                    if len(rectangles_front) > 1:
-                        num_rect_f = len(rectangles_front)
-                        i = 0
-                        while i < num_rect_f - 2:
-                            j = i + 1
-                            while j < num_rect_f - 1 and j <= i + 2:
-                                if (rectangles_front[i][2] - 5 <= rectangles_front[j][2] <= rectangles_front[i][3] + 5) \
-                                        or (rectangles_front[i][2] - 5 <= rectangles_front[j][3] <= rectangles_front[i][
-                                    3] + 5):
-                                    rectangles_front[i][0] = min(rectangles_front[i][0], rectangles_front[j][0])
-                                    rectangles_front[i][1] = max(rectangles_front[i][1], rectangles_front[j][1])
-                                    rectangles_front[i][2] = min(rectangles_front[i][2], rectangles_front[j][2])
-                                    rectangles_front[i][3] = max(rectangles_front[i][3], rectangles_front[j][3])
-                                    del rectangles_front[j]
-                                    num_rect_f = num_rect_f - 1
-                                else:
-                                    j += 1
-                            i += 1
-                    end_time = time.time()
-                    time_mess += 'Ret:' + str(round((end_time - start_time) * 1000, 4)) + ';'
-        except Exception as e:
-            print(e)
-            print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
-            print(f"error line:{e.__traceback__.tb_lineno}")
+                            elif rect_f[2] <= line_f[0] <= rect_f[3]:
+                                has_change = True
+                                rect_f[0] = min(rect_f[0], line_f[1])
+                                rect_f[1] = max(rect_f[1], line_f[2])
+                        if not has_change:
+                            rectangles_front.append([line_f[1], line_f[2], line_f[0], line_f[0]])
+            #     # 合并相交的矩形或直线
+            #     if len(rectangles_front) > 1:
+            #         num_rect_f = len(rectangles_front)
+            #         i = 0
+            #         while i < num_rect_f - 2:
+            #             j = i + 1
+            #             while j < num_rect_f - 1 and j <= i + 2:
+            #                 if (rectangles_front[i][2] - 5 <= rectangles_front[j][2] <= rectangles_front[i][3] + 5) \
+            #                         or (rectangles_front[i][2] - 5 <= rectangles_front[j][3] <= rectangles_front[i][
+            #                     3] + 5):
+            #                     rectangles_front[i][0] = min(rectangles_front[i][0], rectangles_front[j][0])
+            #                     rectangles_front[i][1] = max(rectangles_front[i][1], rectangles_front[j][1])
+            #                     rectangles_front[i][2] = min(rectangles_front[i][2], rectangles_front[j][2])
+            #                     rectangles_front[i][3] = max(rectangles_front[i][3], rectangles_front[j][3])
+            #                     del rectangles_front[j]
+            #                     num_rect_f = num_rect_f - 1
+            #                 else:
+            #                     j += 1
+            #             i += 1
+            #     end_time = time.time()
+            #     time_mess += 'Ret:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+            if len(rectangles_left) > 1:
+                rgb_show = draw_rectangles(True, rectangles_left, rgb_show, 15.0, yaw_avg, model_F,
+                                           model_W, model_a, model_b, principal_x)
+                rgb_thres = draw_rectangles(True, rectangles_left, rgb_thres, 15.0, yaw_avg, model_F,
+                                            model_W, model_a, model_b, principal_x)
+            if len(rectangles_right) > 1:
+                rgb_show = draw_rectangles(True, rectangles_right, rgb_show, 15.0, yaw_avg, model_F,
+                                           model_W, model_a, model_b, principal_x)
+                rgb_thres = draw_rectangles(True, rectangles_right, rgb_thres, 15.0, yaw_avg, model_F,
+                                            model_W, model_a, model_b, principal_x)
+            if len(rectangles_front) > 1:
+                rgb_show = draw_rectangles(False, rectangles_front, rgb_show, 15.0, yaw_avg, model_F,
+                                           model_W, model_a, model_b, principal_x)
+                rgb_thres = draw_rectangles(False, rectangles_front, rgb_thres, 15.0, yaw_avg, model_F,
+                                            model_W, model_a, model_b, principal_x)
+
+    except Exception as e:
+        print(e)
+        print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
+        print(f"error line:{e.__traceback__.tb_lineno}")
+    finally:
+        pass
+        print(yaw_avg)
+        # cv2.imshow('canny', gra_canny)
+        # cv2.imshow('thre', gra_threshold)
         # cv2.imshow('Hough', gra_hough)
-        # 画相机中心十字
-        start_time = time.time()
-        # cv2.line(rgb_show, (principal_x, 0), (principal_x, img_height), (255, 255, 0), 1)
-        # cv2.line(rgb_show, (0, principal_y), (img_width, principal_y), (255, 255, 0), 1)
-        # cv2.circle(rgb_show, (principal_x, principal_y), 5, (255, 255, 0), 3)
-        if len(rectangles_left) > 1:
-            q_l.put(rectangles_left)
-            if q_l.qsize() > 1:
-                q_l.get()
-        if len(rectangles_right) > 1:
-            q_r.put(rectangles_right)
-            if q_r.qsize() > 1:
-                q_r.get()
-        if len(rectangles_front) > 1:
-            q_f.put(rectangles_front)
-            if q_f.qsize() > 1:
-                q_f.get()
-        q_img.put(rgb_show)
-        if q_img.qsize() > 1:
-            q_img.get()
-        q_temp.put(gra_threshold)
-        if q_temp.qsize() > 1:
-            q_temp.get()
-        # cv2.imshow('Test', rgb_show)
-        # cv2.waitKey(1)
+        rgb_show_0 = cv2.resize(rgb_thres, (1280, 720))
+        cv2.imshow('Show0', rgb_show_0)
+        rgb_show_1 = cv2.resize(rgb_show, (1280, 720))
+        cv2.imshow('Show1', rgb_show_1)
+        cv2.waitKey(2000)
+# 画相机中心十字
+# start_time = time.time()
+# cv2.line(rgb_show, (principal_x, 0), (principal_x, img_height), (255, 255, 0), 1)
+# cv2.line(rgb_show, (0, principal_y), (img_width, principal_y), (255, 255, 0), 1)
+# cv2.circle(rgb_show, (principal_x, principal_y), 5, (255, 255, 0), 3)
+# if len(rectangles_left) > 1:
+#     q_l.put(rectangles_left)
+#     if q_l.qsize() > 1:
+#         q_l.get()
+# if len(rectangles_right) > 1:
+#     q_r.put(rectangles_right)
+#     if q_r.qsize() > 1:
+#         q_r.get()
+# if len(rectangles_front) > 1:
+#     q_f.put(rectangles_front)
+#     if q_f.qsize() > 1:
+#         q_f.get()
+# q_img.put(rgb_show)
+# if q_img.qsize() > 1:
+#     q_img.get()
+# q_temp.put(gra_hough)
+# if q_temp.qsize() > 1:
+#     q_temp.get()
+# cv2.imshow('Test', rgb_show)
+# cv2.waitKey(1)
 
-        # cv2.imwrite(file_address + 'C' + str(cap_id) + '-' + str_Time + '.jpg', rgb_frame)
-        # cv2.imwrite(file_address + 'D' + str(cap_id) + '-' + str_Time + '.jpg', rgb_rot)
+# cv2.imwrite(file_address + 'C' + str(cap_id) + '-' + str_Time + '.jpg', rgb_frame)
+# cv2.imwrite(file_address + 'D' + str(cap_id) + '-' + str_Time + '.jpg', rgb_rot)
 
-        # 保存txt，传输数据
-        # file_rec = open(file_address + 'Dis.txt', 'a')
-        end_time = time.time()
-        time_mess += 'Shw:' + str(round((end_time - start_time) * 1000, 4)) + ';'
-        end_time_total = time.time()
-        time_mess += 'All:' + str(round((end_time_total - start_time_total) * 1000, 4)) + ';\n'
+# 保存txt，传输数据
+# file_rec = open(file_address + 'Dis.txt', 'a')
+# end_time = time.time()
+# time_mess += 'Shw:' + str(round((end_time - start_time) * 1000, 4)) + ';'
+# end_time_total = time.time()
+# time_mess += 'All:' + str(round((end_time_total - start_time_total) * 1000, 4)) + ';\n'
 
-        # cv2.waitKey(1)
-        # if len(time_mess) > 0:
-        #     file_rec.write('Tpy:Timer;' + time_mess)
-        # file_rec.close()
-
-
-# 读取IMU数据
-def imu_get(q_ia, q_id, q_im, q_y, q_c, lock_ser, file_address):
-    global glo_is_init
-
-    cv2.waitKey(500)
-    se_i = serial.Serial(imu_com, imu_baud, timeout=imu_timeout)
-    # 释放串口积攒的数据
-    se_i.flushInput()
-    se_i.flushOutput()
-    print('IMU start')
-    while True:
-        try:
-            # 控制信号标志位
-            is_ctl = False
-            # 串口j采集JY61的IMU数据
-            # lock_ser.acquire()
-            imu_rec = se_i.read(33)
-            # lock_ser.release()
-            if imu_rec:
-                str_imu = binascii.b2a_hex(imu_rec).decode()
-                # file_rec = open(file_address + 'JY61.txt', 'a')
-                # str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-                if len(str_imu) == 66 and str_imu[0:4] == '5551':
-                    jy_list = JY61.DueData(imu_rec)
-                    if str(type(jy_list)) != "<class 'NoneType'>":
-                        sav_mess = ("normal;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;\n" % jy_list)
-                        send_list = [round(jy_list[6], 2), round(jy_list[7], 2), round(jy_list[8], 2)]
-                        # print(str(round(jy_list[6], 2)), str(round(jy_list[7], 2)), str(round(jy_list[8], 2)))
-                        q_id.put(send_list)
-                        q_id.get() if q_id.qsize() > 1 else time.sleep(0.005)
-                        q_im.put(send_list)
-                        q_im.get() if q_im.qsize() > 1 else time.sleep(0.005)
-                        q_ia.put(send_list)
-                        q_ia.get() if q_ia.qsize() > 1 else time.sleep(0.005)
-                    else:
-                        sav_mess = ('NoneType;' + str_imu + ';\n')
-                        print(sav_mess)
-                        se_i.flushOutput()
-                else:
-                    sav_mess = ('error;' + str_imu + ';\n')
-                    print(sav_mess)
-                    se_i.flushOutput()
-                # file_rec.write(str_time + ';' + sav_mess)
-                # file_rec.close()
-
-            if not q_y.empty() and not q_c.empty() and glo_is_init:
-                yaw_c = q_y.get()
-                ac_ctl = q_c.get()
-                if abs(yaw_c) <= 0.5 and yaw_c != 0.00 and ac_ctl[0] == 0:
-                    str_zero = 'ff aa 52'
-                    hex_zero = bytes.fromhex(str_zero)
-                    se_i.write(hex_zero)
-                    cv2.waitKey(50)
-
-        except Exception as e:
-            print(e)
-            print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
-            print(f"error line:{e.__traceback__.tb_lineno}")
+# cv2.waitKey(1)
+# if len(time_mess) > 0:
+#     file_rec.write('Tpy:Timer;' + time_mess)
+# file_rec.close()
 
 
-# 融合前后单目、超声和IMU，快速更新四向和偏航角
-def multi_calc(q_img, q_f, q_l, q_r, q_y, q_i, q_d, q_c, file_address, q_temp):
-    cv2.waitKey(1000)
-    print('calc start')
-
-    # 根据相机编号分配模型参数
-    global para_lines
-    model_F = float(para_lines[0].strip('\n'))
-    model_W = float(para_lines[1].strip('\n'))
-    model_a = float(para_lines[2].strip('\n'))
-    model_b = float(para_lines[3].strip('\n'))
-    principal_x = int(para_lines[4].strip('\n'))
-    principal_y = int(para_lines[5].strip('\n'))
-
-    imu_yaw = 0.0
-    imu_roll = 0.0
-    imu_pitch = 0.0
-
-    cam_front = 0
-    cam_left = 0
-    cam_right = 0
-    cam_yaw = 0.0
-
-    dis_f = [[0.0, 0.0]]
-    dis_l = [[0.0, 0.0]]
-    dis_r = [[0.0, 0.0]]
-
-    ac_ctl = [0]
-
-    start_time = time.time()
-    end_time = time.time()
-    time_mess = round((end_time - start_time) * 1000, 0)
-
-    # show_width = 640
-    # show_height = 360
-    # show_width = 480
-    # show_height = 270
-    show_width = 960
-    show_height = 540
-    half_width = int(show_width / 2)
-    half_height = int(show_height / 2)
-
-    # rgb_cam = np.zeros((show_height, show_width, 3), np.uint8)
-
-    while True:
-        if not q_img.empty():
-            print('Get Img')
-            break
-        else:
-            print('No Image')
-            cv2.waitKey(200)
-
-    while True:
-        str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-        # 收到数据标志位
-        is_imu = False
-        is_cam = False
-        is_f = False
-        is_l = False
-        is_r = False
-        is_y = False
-        is_ctl = False
-
-        # 发往主板的控制命令
-        if not q_c.empty():
-            is_ctl = True
-            ac_ctl = q_c.get()
-
-        # IMU
-        if not q_i.empty():
-            is_imu = True
-            imu_list = q_i.get()
-            imu_roll = imu_list[0]
-            imu_pitch = imu_list[1]
-            imu_yaw = -imu_list[2]
-
-        # 单目收到数据
-        if not q_img.empty():
-            end_time = time.time()
-            time_mess = round((end_time - start_time) * 1000, 0)
-            start_time_calc = time.time()
-
-            # 临时缓存，提取二值图
-            gra_temp = q_temp.get()
-            gra_threshold = cv2.resize(gra_temp, (show_width, show_height))
-            rgb_show_1 = cv2.cvtColor(gra_threshold, cv2.COLOR_GRAY2BGR)
-
-            # 左上展示图像
-            is_cam = True
-            rgb_tmp = q_img.get()
-
-            # 视觉偏航角
-            if not q_y.empty():
-                is_y = True
-                cam_yaw = q_y.get()
-            else:
-                cam_yaw = 0.0
-
-            # 前向水平框
-            if not q_f.empty():
-                is_f = True
-                rect_f = q_f.get()
-                rgb_tmp, num_rect_f, num_line_f, dis_f = CVFunc.draw_rectangles(False, rect_f, rgb_tmp, 15.0, cam_yaw, model_F, model_W, model_a, model_b, principal_x)
-                if dis_f[0][0] != 0:
-                    dis_f.sort(reverse=True)
-                    side_front = dis_f[0][0]
-                else:
-                    side_front = -999.9
-            else:
-                side_front = -999.9
-
-            # 前向左侧垂直框
-            if not q_l.empty():
-                is_l = True
-                rect_l = q_l.get()
-                rgb_tmp, num_rect_l, num_line_l, dis_l = CVFunc.draw_rectangles(True, rect_l, rgb_tmp, 15.0, cam_yaw, model_F, model_W, model_a, model_b, principal_x)
-                if dis_l[0][0] != 0.0:
-                    dis_l.sort(reverse=False)
-                    if cam_yaw > 0.0:
-                        side_left = round((dis_l[0][0] - vehicle_front * math.sin(
-                            math.radians(abs(cam_yaw))) - vehicle_left * math.sin(math.radians(90.0 - abs(cam_yaw)))), 1)
-                    else:
-                        side_left = round((dis_l[0][0] + vehicle_front * math.sin(
-                            math.radians(abs(cam_yaw))) - vehicle_left * math.sin(math.radians(90.0 - abs(cam_yaw)))), 1)
-                else:
-                    side_left = -999.9
-            else:
-                side_left = -999.9
-
-            # 前向右侧垂直框
-            if not q_r.empty():
-                is_r = True
-                rect_r = q_r.get()
-                rgb_tmp, num_rect_r, num_line_r, dis_r = CVFunc.draw_rectangles(True, rect_r, rgb_tmp, 15.0, cam_yaw, model_F, model_W, model_a, model_b, principal_x)
-                if dis_r[0][0] != 0.0:
-                    dis_r.sort(reverse=True)
-                    if cam_yaw >= 0:
-                        side_right = round((dis_r[0][1] + vehicle_front * math.sin(
-                            math.radians(abs(cam_yaw))) - vehicle_right * math.sin(math.radians(90.0 - abs(cam_yaw)))), 1)
-                    else:
-                        side_right = round((dis_r[0][1] - vehicle_front * math.sin(
-                            math.radians(abs(cam_yaw))) - vehicle_right * math.sin(math.radians(90.0 - abs(cam_yaw)))), 1)
-                else:
-                    side_right = -999.9
-            else:
-                side_right = -999.9
-
-            # 发送前向最远框的水平距离，左右侧最远框经过车宽换算后距离，视觉偏航角
-            send_list = [side_front, side_left, side_right, cam_yaw]
-            q_d.put(send_list)
-            q_d.get() if q_d.qsize() > 1 else time.sleep(0.005)
-
-            # 右上的距离展示区
-            rgb_show_line = np.zeros((show_height, show_width, 3), np.uint8)
-            if is_f and dis_f[0][0] != 0:
-                dis_f.sort(reverse=True)
-                for i in range(0, len(dis_f), 1):
-                    if i == 0:
-                        temp_y = int(show_height - (show_height * dis_f[i][0] / 1000))
-                        cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (0, 0, 255), 1)
-                        temp_y = int(show_height - (show_height * dis_f[i][1] / 1000))
-                        cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (0, 0, 255), 1)
-                    else:
-                        temp_y = int(show_height - (show_height * dis_f[i][0] / 1000))
-                        cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (255, 0, 0), 1)
-                        temp_y = int(show_height - (show_height * dis_f[i][1] / 1000))
-                        cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (255, 0, 0), 1)
-            if is_l and dis_l[0][0] != 0.0:
-                dis_l.sort(reverse=False)
-                for i in range(0, len(dis_l), 1):
-                    if i == 0:
-                        temp_x = int(half_width + (half_width * dis_l[i][0] / 500))
-                        cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (0, 0, 255), 1)
-                        temp_x = int(half_width + (half_width * dis_l[i][1] / 500))
-                        cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (0, 0, 255), 1)
-                    else:
-                        temp_x = int(half_width + (half_width * dis_l[i][0] / 500))
-                        cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (255, 0, 0), 1)
-                        temp_x = int(half_width + (half_width * dis_l[i][1] / 500))
-                        cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (255, 0, 0), 1)
-            if is_r and dis_r[0][0] != 0.0:
-                dis_r.sort(reverse=True)
-                for i in range(0, len(dis_r), 1):
-                    if i == 0:
-                        temp_x = int(half_width + (half_width * dis_r[i][0] / 500))
-                        cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (0, 0, 255), 1)
-                        temp_x = int(half_width + (half_width * dis_r[i][1] / 500))
-                        cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (0, 0, 255), 1)
-                    else:
-                        temp_x = int(half_width + (half_width * dis_r[i][0] / 500))
-                        cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (255, 0, 0), 1)
-                        temp_x = int(half_width + (half_width * dis_r[i][1] / 500))
-                        cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (255, 0, 0), 1)
-
-            # 视觉的偏航角显示
-            if is_y:
-                yaw_sin = math.sin(math.radians(abs(cam_yaw)))
-                yaw_cos = math.cos(math.radians(abs(cam_yaw)))
-                if -90.0 <= cam_yaw < 0.0:
-                    temp_x = int(half_width - yaw_sin * (half_height * 0.5))
-                    temp_y = int(show_height - yaw_cos * (half_height * 0.5))
-                    cv2.line(rgb_show_line, (half_width, show_height), (temp_x, temp_y), (160, 0, 240), 3)
-                elif 0.0 < cam_yaw <= 90.:
-                    temp_x = int(half_width + yaw_sin * (half_height * 0.5))
-                    temp_y = int(show_height - yaw_cos * (half_height * 0.5))
-                    cv2.line(rgb_show_line, (half_width, show_height), (temp_x, temp_y), (160, 0, 240), 3)
-
-            # IMU的偏航角显示
-            yaw_sin = math.sin(math.radians(abs(imu_yaw)))
-            yaw_cos = math.cos(math.radians(abs(imu_yaw)))
-            if -90 <= imu_yaw < 0:
-                temp_x = int(half_width - yaw_sin * (half_height * 0.5))
-                temp_y = int(half_height - yaw_cos * (half_height * 0.5))
-            elif 0 <= imu_yaw <= 90:
-                temp_x = int(half_width + yaw_sin * (half_height * 0.5))
-                temp_y = int(half_height - yaw_cos * (half_height * 0.5))
-            elif -180 <= imu_yaw < -90:
-                temp_x = int(half_width - yaw_sin * (half_height * 0.5))
-                temp_y = int(half_height - yaw_cos * (half_height * 0.5))
-            elif 90 < imu_yaw <= 180:
-                temp_x = int(half_width + yaw_sin * (half_height * 0.5))
-                temp_y = int(half_height - yaw_cos * (half_height * 0.5))
-            else:
-                temp_x = half_width
-                temp_y = half_height - (half_height * 0.5)
-            cv2.line(rgb_show_line, (half_width, half_height), (temp_x, temp_y), (160, 0, 240), 3)
-
-            # 车身宽度
-            temp_x = int(half_width - (half_width * vehicle_left / 500))
-            cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (255, 255, 255), 1)
-            temp_x = int(half_width + (half_width * vehicle_right / 500))
-            cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (255, 255, 255), 1)
-
-            # 右下的数据展示区
-            rgb_show_data = np.zeros((show_height, show_width, 3), np.uint8)
-            str_0 = str(time_mess)
-            if is_y:
-                str_0 += '  Y:' + str(cam_yaw)
-            else:
-                str_0 += '  Y:N/A'
-            if is_f and dis_f[0][0] != 0.0:
-                dis_f.sort(reverse=True)
-                str_0 += '  F:' + str(int(dis_f[0][0]))
-            else:
-                str_0 += '  F:N/A'
-            if is_l and dis_l[0][0] != 0.0:
-                str_1 = 'L:' + str(int(dis_l[0][0])) + ',' + str(int(dis_l[0][1])) + '=' + str(int(dis_l[0][1] - dis_l[0][0]))
-            else:
-                str_1 = 'L:N/A'
-            if is_r and dis_r[0][0] != 0.0:
-                str_2 = 'R:' + str(int(dis_r[0][1])) + ',' + str(int(dis_r[0][0])) + '=' + str(int(dis_r[0][1] - dis_r[0][0]))
-            else:
-                str_2 = 'R:N/A'
-
-            str_3 = 'Yaw:' + str(imu_yaw) + '  Roll:' + str(imu_roll) + '  Pitch:' + str(imu_pitch)
-
-            # str_3 = str(ac_ctl[1])
-            # if ac_ctl[0] == 0:
-            #     str_3 += '  Stop'
-            # elif ac_ctl[0] == 1:
-            #     str_3 += '  Front'
-            # elif ac_ctl[0] == 2:
-            #     str_3 += '  Back'
-            # elif ac_ctl[0] == 3:
-            #     str_3 += '  Left'
-            # elif ac_ctl[0] == 4:
-            #     str_3 += '  Right'
-
-            cv2.putText(rgb_show_data, str_0, (0, int(show_height / 5) - 5), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 255),
-                        1)
-            cv2.putText(rgb_show_data, str_1, (0, int(show_height * 2 / 5) - 5), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 255),
-                        1)
-            cv2.putText(rgb_show_data, str_2, (0, int(show_height * 3 / 5) - 5), cv2.FONT_HERSHEY_COMPLEX, 0.6,
-                        (255, 255, 255), 1)
-            cv2.putText(rgb_show_data, str_3, (0, int(show_height * 4 / 5) - 5), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 255), 1)
-
-            # 4图拼接
-            rgb_show_0 = cv2.resize(rgb_tmp, (show_width, show_height))
-            rgb_mix = np.zeros(((show_height * 2), (show_width * 2), 3), np.uint8)
-            rgb_mix[0:show_height, 0:show_width] = rgb_show_0
-            rgb_mix[0:show_height, show_width:(show_width * 2)] = rgb_show_line
-            rgb_mix[show_height:(show_height * 2), 0:show_width] = rgb_show_1
-            rgb_mix[show_height:(show_height * 2), show_width:(show_width * 2)] = rgb_show_data
-            cv2.imshow('Show', rgb_mix)
-
-            end_time_calc = time.time()
-            time_mess_calc = round((end_time_calc - start_time_calc) * 1000, 0)
-            print(time_mess_calc)
-
-            start_time = time.time()
-
-        cv2.waitKey(1)
-
-
-def quit_all():
-    print('Exit ALL')
-    os.kill(os.getpid(), signal.SIGTERM)
-
-
+# # 读取IMU数据
+# def imu_get(q_ia, q_id, q_im, q_y, q_c, lock_ser, file_address):
+#     global glo_is_init
+#
+#     cv2.waitKey(500)
+#     se_i = serial.Serial(imu_com, imu_baud, timeout=imu_timeout)
+#     # 释放串口积攒的数据
+#     se_i.flushInput()
+#     se_i.flushOutput()
+#     print('IMU start')
+#     while True:
+#         try:
+#             # 控制信号标志位
+#             is_ctl = False
+#             # 串口j采集JY61的IMU数据
+#             # lock_ser.acquire()
+#             imu_rec = se_i.read(33)
+#             # lock_ser.release()
+#             if imu_rec:
+#                 str_imu = binascii.b2a_hex(imu_rec).decode()
+#                 # file_rec = open(file_address + 'JY61.txt', 'a')
+#                 # str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+#                 if len(str_imu) == 66 and str_imu[0:4] == '5551':
+#                     jy_list = JY61.DueData(imu_rec)
+#                     if str(type(jy_list)) != "<class 'NoneType'>":
+#                         sav_mess = ("normal;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;\n" % jy_list)
+#                         send_list = [round(jy_list[6], 2), round(jy_list[7], 2), round(jy_list[8], 2)]
+#                         # print(str(round(jy_list[6], 2)), str(round(jy_list[7], 2)), str(round(jy_list[8], 2)))
+#                         q_id.put(send_list)
+#                         q_id.get() if q_id.qsize() > 1 else time.sleep(0.005)
+#                         q_im.put(send_list)
+#                         q_im.get() if q_im.qsize() > 1 else time.sleep(0.005)
+#                         q_ia.put(send_list)
+#                         q_ia.get() if q_ia.qsize() > 1 else time.sleep(0.005)
+#                     else:
+#                         sav_mess = ('NoneType;' + str_imu + ';\n')
+#                         print(sav_mess)
+#                         se_i.flushOutput()
+#                 else:
+#                     sav_mess = ('error;' + str_imu + ';\n')
+#                     print(sav_mess)
+#                     se_i.flushOutput()
+#                 # file_rec.write(str_time + ';' + sav_mess)
+#                 # file_rec.close()
+#
+#             if not q_y.empty() and not q_c.empty() and glo_is_init:
+#                 yaw_c = q_y.get()
+#                 ac_ctl = q_c.get()
+#                 if abs(yaw_c) <= 0.5 and yaw_c != 0.00 and ac_ctl[0] == 0:
+#                     str_zero = 'ff aa 52'
+#                     hex_zero = bytes.fromhex(str_zero)
+#                     se_i.write(hex_zero)
+#                     cv2.waitKey(50)
+#
+#         except Exception as e:
+#             print(e)
+#             print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
+#             print(f"error line:{e.__traceback__.tb_lineno}")
+#
+#
+# # 融合前后单目、超声和IMU，快速更新四向和偏航角
+# def multi_calc(q_img, q_f, q_l, q_r, q_y, q_i, q_d, q_c, file_address, q_temp):
+#     cv2.waitKey(1000)
+#     print('calc start')
+#
+#     # 根据相机编号分配模型参数
+#     global para_lines
+#     model_F = float(para_lines[0].strip('\n'))
+#     model_W = float(para_lines[1].strip('\n'))
+#     model_a = float(para_lines[2].strip('\n'))
+#     model_b = float(para_lines[3].strip('\n'))
+#     principal_x = int(para_lines[4].strip('\n'))
+#     principal_y = int(para_lines[5].strip('\n'))
+#
+#     imu_yaw = 0.0
+#     imu_roll = 0.0
+#     imu_pitch = 0.0
+#
+#     cam_front = 0
+#     cam_left = 0
+#     cam_right = 0
+#     cam_yaw = 0.0
+#
+#     dis_f = [[0.0, 0.0]]
+#     dis_l = [[0.0, 0.0]]
+#     dis_r = [[0.0, 0.0]]
+#
+#     ac_ctl = [0]
+#
+#     start_time = time.time()
+#     end_time = time.time()
+#     time_mess = round((end_time - start_time) * 1000, 0)
+#
+#     # show_width = 640
+#     # show_height = 360
+#     # show_width = 480
+#     # show_height = 270
+#     show_width = 960
+#     show_height = 540
+#     half_width = int(show_width / 2)
+#     half_height = int(show_height / 2)
+#
+#     # rgb_cam = np.zeros((show_height, show_width, 3), np.uint8)
+#
+#     while True:
+#         if not q_img.empty():
+#             print('Get Img')
+#             break
+#         else:
+#             print('No Image')
+#             cv2.waitKey(200)
+#
+#     while True:
+#         str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+#         # 收到数据标志位
+#         is_imu = False
+#         is_cam = False
+#         is_f = False
+#         is_l = False
+#         is_r = False
+#         is_y = False
+#         is_ctl = False
+#
+#         # 发往主板的控制命令
+#         if not q_c.empty():
+#             is_ctl = True
+#             ac_ctl = q_c.get()
+#
+#         # IMU
+#         if not q_i.empty():
+#             is_imu = True
+#             imu_list = q_i.get()
+#             imu_roll = imu_list[0]
+#             imu_pitch = imu_list[1]
+#             imu_yaw = -imu_list[2]
+#
+#         # 单目收到数据
+#         if not q_img.empty():
+#             end_time = time.time()
+#             time_mess = round((end_time - start_time) * 1000, 0)
+#             start_time_calc = time.time()
+#
+#             # 临时缓存，提取二值图
+#             gra_temp = q_temp.get()
+#             temp_height = int(gra_temp.shape[0])
+#             if temp_height != show_height:
+#                 gra_threshold = cv2.resize(gra_temp, (show_width, show_height))
+#             else:
+#                 gra_threshold = gra_temp.copy()
+#             rgb_show_1 = cv2.cvtColor(gra_threshold, cv2.COLOR_GRAY2BGR)
+#
+#             # 左上展示图像
+#             is_cam = True
+#             rgb_tmp = q_img.get()
+#
+#             # 视觉偏航角
+#             if not q_y.empty():
+#                 is_y = True
+#                 cam_yaw = q_y.get()
+#             else:
+#                 cam_yaw = 0.0
+#
+#             # 前向水平框
+#             if not q_f.empty():
+#                 is_f = True
+#                 rect_f = q_f.get()
+#                 rgb_tmp, num_rect_f, num_line_f, dis_f = CVFunc.draw_rectangles(False, rect_f, rgb_tmp, 15.0, cam_yaw, model_F, model_W, model_a, model_b, principal_x)
+#                 if dis_f[0][0] != 0:
+#                     dis_f.sort(reverse=True)
+#                     side_front = dis_f[0][0]
+#                 else:
+#                     side_front = -999.9
+#             else:
+#                 side_front = -999.9
+#
+#             # 前向左侧垂直框
+#             if not q_l.empty():
+#                 is_l = True
+#                 rect_l = q_l.get()
+#                 rgb_tmp, num_rect_l, num_line_l, dis_l = CVFunc.draw_rectangles(True, rect_l, rgb_tmp, 15.0, cam_yaw, model_F, model_W, model_a, model_b, principal_x)
+#                 if dis_l[0][0] != 0.0:
+#                     dis_l.sort(reverse=False)
+#                     if cam_yaw > 0.0:
+#                         side_left = round((dis_l[0][0] - vehicle_front * math.sin(
+#                             math.radians(abs(cam_yaw))) - vehicle_left * math.sin(math.radians(90.0 - abs(cam_yaw)))), 1)
+#                     else:
+#                         side_left = round((dis_l[0][0] + vehicle_front * math.sin(
+#                             math.radians(abs(cam_yaw))) - vehicle_left * math.sin(math.radians(90.0 - abs(cam_yaw)))), 1)
+#                 else:
+#                     side_left = -999.9
+#             else:
+#                 side_left = -999.9
+#
+#             # 前向右侧垂直框
+#             if not q_r.empty():
+#                 is_r = True
+#                 rect_r = q_r.get()
+#                 rgb_tmp, num_rect_r, num_line_r, dis_r = CVFunc.draw_rectangles(True, rect_r, rgb_tmp, 15.0, cam_yaw, model_F, model_W, model_a, model_b, principal_x)
+#                 if dis_r[0][0] != 0.0:
+#                     dis_r.sort(reverse=True)
+#                     if cam_yaw >= 0:
+#                         side_right = round((dis_r[0][1] + vehicle_front * math.sin(
+#                             math.radians(abs(cam_yaw))) - vehicle_right * math.sin(math.radians(90.0 - abs(cam_yaw)))), 1)
+#                     else:
+#                         side_right = round((dis_r[0][1] - vehicle_front * math.sin(
+#                             math.radians(abs(cam_yaw))) - vehicle_right * math.sin(math.radians(90.0 - abs(cam_yaw)))), 1)
+#                 else:
+#                     side_right = -999.9
+#             else:
+#                 side_right = -999.9
+#
+#             # 发送前向最远框的水平距离，左右侧最远框经过车宽换算后距离，视觉偏航角
+#             send_list = [side_front, side_left, side_right, cam_yaw]
+#             q_d.put(send_list)
+#             q_d.get() if q_d.qsize() > 1 else time.sleep(0.005)
+#
+#             # 右上的距离展示区
+#             rgb_show_line = np.zeros((show_height, show_width, 3), np.uint8)
+#             if is_f and dis_f[0][0] != 0:
+#                 dis_f.sort(reverse=True)
+#                 for i in range(0, len(dis_f), 1):
+#                     if i == 0:
+#                         temp_y = int(show_height - (show_height * dis_f[i][0] / 1000))
+#                         cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (0, 0, 255), 1)
+#                         temp_y = int(show_height - (show_height * dis_f[i][1] / 1000))
+#                         cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (0, 0, 255), 1)
+#                     else:
+#                         temp_y = int(show_height - (show_height * dis_f[i][0] / 1000))
+#                         cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (255, 0, 0), 1)
+#                         temp_y = int(show_height - (show_height * dis_f[i][1] / 1000))
+#                         cv2.line(rgb_show_line, (0, temp_y), (show_width, temp_y), (255, 0, 0), 1)
+#             if is_l and dis_l[0][0] != 0.0:
+#                 dis_l.sort(reverse=False)
+#                 for i in range(0, len(dis_l), 1):
+#                     if i == 0:
+#                         temp_x = int(half_width + (half_width * dis_l[i][0] / 500))
+#                         cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (0, 0, 255), 1)
+#                         temp_x = int(half_width + (half_width * dis_l[i][1] / 500))
+#                         cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (0, 0, 255), 1)
+#                     else:
+#                         temp_x = int(half_width + (half_width * dis_l[i][0] / 500))
+#                         cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (255, 0, 0), 1)
+#                         temp_x = int(half_width + (half_width * dis_l[i][1] / 500))
+#                         cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (255, 0, 0), 1)
+#             if is_r and dis_r[0][0] != 0.0:
+#                 dis_r.sort(reverse=True)
+#                 for i in range(0, len(dis_r), 1):
+#                     if i == 0:
+#                         temp_x = int(half_width + (half_width * dis_r[i][0] / 500))
+#                         cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (0, 0, 255), 1)
+#                         temp_x = int(half_width + (half_width * dis_r[i][1] / 500))
+#                         cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (0, 0, 255), 1)
+#                     else:
+#                         temp_x = int(half_width + (half_width * dis_r[i][0] / 500))
+#                         cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (255, 0, 0), 1)
+#                         temp_x = int(half_width + (half_width * dis_r[i][1] / 500))
+#                         cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (255, 0, 0), 1)
+#
+#             # 视觉的偏航角显示
+#             if is_y:
+#                 yaw_sin = math.sin(math.radians(abs(cam_yaw)))
+#                 yaw_cos = math.cos(math.radians(abs(cam_yaw)))
+#                 if -90.0 <= cam_yaw < 0.0:
+#                     temp_x = int(half_width - yaw_sin * (half_height * 0.5))
+#                     temp_y = int(show_height - yaw_cos * (half_height * 0.5))
+#                     cv2.line(rgb_show_line, (half_width, show_height), (temp_x, temp_y), (160, 0, 240), 3)
+#                 elif 0.0 < cam_yaw <= 90.:
+#                     temp_x = int(half_width + yaw_sin * (half_height * 0.5))
+#                     temp_y = int(show_height - yaw_cos * (half_height * 0.5))
+#                     cv2.line(rgb_show_line, (half_width, show_height), (temp_x, temp_y), (160, 0, 240), 3)
+#
+#             # IMU的偏航角显示
+#             yaw_sin = math.sin(math.radians(abs(imu_yaw)))
+#             yaw_cos = math.cos(math.radians(abs(imu_yaw)))
+#             if -90 <= imu_yaw < 0:
+#                 temp_x = int(half_width - yaw_sin * (half_height * 0.5))
+#                 temp_y = int(half_height - yaw_cos * (half_height * 0.5))
+#             elif 0 <= imu_yaw <= 90:
+#                 temp_x = int(half_width + yaw_sin * (half_height * 0.5))
+#                 temp_y = int(half_height - yaw_cos * (half_height * 0.5))
+#             elif -180 <= imu_yaw < -90:
+#                 temp_x = int(half_width - yaw_sin * (half_height * 0.5))
+#                 temp_y = int(half_height - yaw_cos * (half_height * 0.5))
+#             elif 90 < imu_yaw <= 180:
+#                 temp_x = int(half_width + yaw_sin * (half_height * 0.5))
+#                 temp_y = int(half_height - yaw_cos * (half_height * 0.5))
+#             else:
+#                 temp_x = half_width
+#                 temp_y = half_height - (half_height * 0.5)
+#             cv2.line(rgb_show_line, (half_width, half_height), (temp_x, temp_y), (160, 0, 240), 3)
+#
+#             # 车身宽度
+#             temp_x = int(half_width - (half_width * vehicle_left / 500))
+#             cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (255, 255, 255), 1)
+#             temp_x = int(half_width + (half_width * vehicle_right / 500))
+#             cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (255, 255, 255), 1)
+#
+#             # 右下的数据展示区
+#             rgb_show_data = np.zeros((show_height, show_width, 3), np.uint8)
+#             str_0 = str(time_mess)
+#             if is_y:
+#                 str_0 += '  Y:' + str(cam_yaw)
+#             else:
+#                 str_0 += '  Y:N/A'
+#             if is_f and dis_f[0][0] != 0.0:
+#                 dis_f.sort(reverse=True)
+#                 str_0 += '  F:' + str(int(dis_f[0][0]))
+#             else:
+#                 str_0 += '  F:N/A'
+#             if is_l and dis_l[0][0] != 0.0:
+#                 str_1 = 'L:' + str(int(dis_l[0][0])) + ',' + str(int(dis_l[0][1])) + '=' + str(int(dis_l[0][1] - dis_l[0][0]))
+#             else:
+#                 str_1 = 'L:N/A'
+#             if is_r and dis_r[0][0] != 0.0:
+#                 str_2 = 'R:' + str(int(dis_r[0][1])) + ',' + str(int(dis_r[0][0])) + '=' + str(int(dis_r[0][1] - dis_r[0][0]))
+#             else:
+#                 str_2 = 'R:N/A'
+#
+#             str_3 = 'Yaw:' + str(imu_yaw) + '  Roll:' + str(imu_roll) + '  Pitch:' + str(imu_pitch)
+#
+#             # str_3 = str(ac_ctl[1])
+#             # if ac_ctl[0] == 0:
+#             #     str_3 += '  Stop'
+#             # elif ac_ctl[0] == 1:
+#             #     str_3 += '  Front'
+#             # elif ac_ctl[0] == 2:
+#             #     str_3 += '  Back'
+#             # elif ac_ctl[0] == 3:
+#             #     str_3 += '  Left'
+#             # elif ac_ctl[0] == 4:
+#             #     str_3 += '  Right'
+#
+#             cv2.putText(rgb_show_data, str_0, (0, int(show_height / 5) - 5), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 255),
+#                         1)
+#             cv2.putText(rgb_show_data, str_1, (0, int(show_height * 2 / 5) - 5), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 255),
+#                         1)
+#             cv2.putText(rgb_show_data, str_2, (0, int(show_height * 3 / 5) - 5), cv2.FONT_HERSHEY_COMPLEX, 0.6,
+#                         (255, 255, 255), 1)
+#             cv2.putText(rgb_show_data, str_3, (0, int(show_height * 4 / 5) - 5), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 255), 1)
+#
+#             # 4图拼接
+#             temp_height = int(rgb_tmp.shape[0])
+#             if temp_height != show_height:
+#                 rgb_show_0 = cv2.resize(rgb_tmp, (show_width, show_height))
+#             else:
+#                 rgb_show_0 = rgb_tmp.copy()
+#             rgb_mix = np.zeros(((show_height * 2), (show_width * 2), 3), np.uint8)
+#             rgb_mix[0:show_height, 0:show_width] = rgb_show_0
+#             rgb_mix[0:show_height, show_width:(show_width * 2)] = rgb_show_line
+#             rgb_mix[show_height:(show_height * 2), 0:show_width] = rgb_show_1
+#             rgb_mix[show_height:(show_height * 2), show_width:(show_width * 2)] = rgb_show_data
+#             cv2.imshow('Show', rgb_mix)
+#
+#             end_time_calc = time.time()
+#             time_mess_calc = round((end_time_calc - start_time_calc) * 1000, 0)
+#             print(time_mess_calc)
+#
+#             start_time = time.time()
+#
+#         cv2.waitKey(1)
+#
+#
+# def quit_all():
+#     print('Exit ALL')
+#     os.kill(os.getpid(), signal.SIGTERM)
+#
+#
 # # 根据发送的数据，拆分控制信号和主板信号
 # def read_message(hex_rec):
 #     str_rec = binascii.b2a_hex(hex_rec).decode()
@@ -2000,60 +2121,60 @@ def quit_all():
 #         # if no_feedBack:
 #         #     continue
 #
-
-if __name__ == '__main__':
-    # 新建文件夹,读取时间作为文件名
-    str_fileAddress = './TestData/'
-    str_Time = datetime.datetime.now().strftime('%Y%m%d-%H%M')
-    # file_rec = open(str_fileHome + str_Time + '.txt', 'w', encoding='utf-8')
-    str_fileAddress += str_Time
-    if not os.path.exists(str_fileAddress):
-        os.makedirs(str_fileAddress)
-    str_fileAddress += '/'
-
-    mp.set_start_method(method='spawn')  # init
-    processes = []
-    lock = mp.Lock()
-    # 单目相机测距，相机进程图像、视觉偏航角（给IMU和给计算进程）、标注后图像、前水平线、左垂直线、右垂直线
-    queue_camera = mp.Queue(maxsize=2)
-    queue_yaw_imu = mp.Queue(maxsize=2)
-    queue_yaw_main = mp.Queue(maxsize=2)
-    queue_image = mp.Queue(maxsize=2)
-    queue_front = mp.Queue(maxsize=2)
-    queue_left = mp.Queue(maxsize=2)
-    queue_right = mp.Queue(maxsize=2)
-    queue_temp = mp.Queue(maxsize=2)
-    # IMU，偏航、俯仰和翻滚，分发前相机测距、计算和自动控制
-    queue_imu_dis = mp.Queue(maxsize=2)
-    queue_imu_main = mp.Queue(maxsize=2)
-    queue_imu_auto = mp.Queue(maxsize=2)
-    # 自动控制交互，计算给自控距离数据，自控给计算控制命令，自控给IMU控制命令
-    queue_distance = mp.Queue(maxsize=2)
-    queue_control = mp.Queue(maxsize=2)
-    queue_control_imu = mp.Queue(maxsize=2)
-
-    # 单目视觉测距
-    processes.append(mp.Process(target=image_put, args=(queue_camera, camera_id)))
-    processes.append(
-        mp.Process(target=distance_get, args=(
-            queue_camera, queue_imu_dis, queue_yaw_imu, queue_yaw_main, queue_image, queue_front, queue_left,
-            queue_right, lock, camera_id, str_fileAddress, queue_temp)))
-    # IMU测姿态
-    # processes.append(
-    #     mp.Process(target=imu_get, args=(
-    #         queue_imu_auto, queue_imu_dis, queue_imu_main, queue_yaw_imu, queue_control_imu, lock, str_fileAddress)))
-    # 视觉感知融合
-    processes.append(
-        mp.Process(target=multi_calc, args=(
-            queue_image, queue_front, queue_left, queue_right, queue_yaw_main, queue_imu_main, queue_distance, queue_control,
-            str_fileAddress, queue_temp)))
-    # 自动运行
-    # processes.append(
-    #     mp.Process(target=autocontrol_run, args=(
-    #         queue_imu_auto, queue_distance, queue_control, queue_control_imu, lock, str_fileAddress)))
-
-    for process in processes:
-        process.daemon = True
-        process.start()
-    for process in processes:
-        process.join()
+#
+# if __name__ == '__main__':
+#     # 新建文件夹,读取时间作为文件名
+#     str_fileAddress = './TestData/'
+#     str_Time = datetime.datetime.now().strftime('%Y%m%d-%H%M')
+#     # file_rec = open(str_fileHome + str_Time + '.txt', 'w', encoding='utf-8')
+#     str_fileAddress += str_Time
+#     if not os.path.exists(str_fileAddress):
+#         os.makedirs(str_fileAddress)
+#     str_fileAddress += '/'
+#
+#     mp.set_start_method(method='spawn')  # init
+#     processes = []
+#     lock = mp.Lock()
+#     # 单目相机测距，相机进程图像、视觉偏航角（给IMU和给计算进程）、标注后图像、前水平线、左垂直线、右垂直线
+#     queue_camera = mp.Queue(maxsize=2)
+#     queue_yaw_imu = mp.Queue(maxsize=2)
+#     queue_yaw_main = mp.Queue(maxsize=2)
+#     queue_image = mp.Queue(maxsize=2)
+#     queue_front = mp.Queue(maxsize=2)
+#     queue_left = mp.Queue(maxsize=2)
+#     queue_right = mp.Queue(maxsize=2)
+#     queue_temp = mp.Queue(maxsize=2)
+#     # IMU，偏航、俯仰和翻滚，分发前相机测距、计算和自动控制
+#     queue_imu_dis = mp.Queue(maxsize=2)
+#     queue_imu_main = mp.Queue(maxsize=2)
+#     queue_imu_auto = mp.Queue(maxsize=2)
+#     # 自动控制交互，计算给自控距离数据，自控给计算控制命令，自控给IMU控制命令
+#     queue_distance = mp.Queue(maxsize=2)
+#     queue_control = mp.Queue(maxsize=2)
+#     queue_control_imu = mp.Queue(maxsize=2)
+#
+#     # 单目视觉测距
+#     processes.append(mp.Process(target=image_put, args=(queue_camera, camera_id)))
+#     processes.append(
+#         mp.Process(target=distance_get, args=(
+#             queue_camera, queue_imu_dis, queue_yaw_imu, queue_yaw_main, queue_image, queue_front, queue_left,
+#             queue_right, lock, camera_id, str_fileAddress, queue_temp)))
+#     # IMU测姿态
+#     # processes.append(
+#     #     mp.Process(target=imu_get, args=(
+#     #         queue_imu_auto, queue_imu_dis, queue_imu_main, queue_yaw_imu, queue_control_imu, lock, str_fileAddress)))
+#     # 视觉感知融合
+#     processes.append(
+#         mp.Process(target=multi_calc, args=(
+#             queue_image, queue_front, queue_left, queue_right, queue_yaw_main, queue_imu_main, queue_distance, queue_control,
+#             str_fileAddress, queue_temp)))
+#     # 自动运行
+#     # processes.append(
+#     #     mp.Process(target=autocontrol_run, args=(
+#     #         queue_imu_auto, queue_distance, queue_control, queue_control_imu, lock, str_fileAddress)))
+#
+#     for process in processes:
+#         process.daemon = True
+#         process.start()
+#     for process in processes:
+#         process.join()
