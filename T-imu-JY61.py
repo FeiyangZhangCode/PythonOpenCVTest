@@ -167,35 +167,39 @@ def get_angle(datahex):
 
 
 if __name__ == '__main__':
-    # use raw_input function for python 2.x or input function for python3.x
-    ser = serial.Serial('/dev/ttyS3', 9600, timeout=0.02)  # ser = serial.Serial('com7',115200, timeout=0.5)
-    print(ser.is_open)
+    se_i = serial.Serial('/dev/ttyTHS1', 9600, timeout=0.05)
+    # 释放串口积攒的数据
+    se_i.flushInput()
+    se_i.flushOutput()
+    print('IMU start')
     while True:
-        time_mess = ''
-        # file_rec = open('./TestData/JY61.txt', 'a')
+        try:
+            # 串口j采集JY61的IMU数据
+            # lock_ser.acquire()
+            imu_rec = se_i.read(33)
+            # lock_ser.release()
+            if imu_rec:
+                str_imu = binascii.b2a_hex(imu_rec).decode()
+                # file_rec = open(file_address + 'JY61.txt', 'a')
+                file_rec = open('./TestData/JY61.txt', 'a')
+                str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
+                if len(str_imu) == 66 and str_imu[0:4] == '5551':
+                    jy_list = JY61.DueData(imu_rec)
+                    if str(type(jy_list)) != "<class 'NoneType'>":
+                        sav_mess = ("normal;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;\n" % jy_list)
+                        send_list = [round(jy_list[6], 2), round(jy_list[7], 2), round(jy_list[8], 2)]
+                        print(str(round(jy_list[6], 2)), str(round(jy_list[7], 2)), str(round(jy_list[8], 2)))
+                    else:
+                        sav_mess = ('NoneType;' + str_imu + ';\n')
+                        se_i.flushOutput()
+                else:
+                    sav_mess = ('error;' + str_imu + ';\n')
+                    se_i.flushOutput()
+                file_rec.write(str_time + ';' + sav_mess)
+                file_rec.close()
 
-        # start_time = time.time()
-        datahex = ser.read(33)
-        if datahex:
-            # print(datahex)
-            str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-            str_rec = binascii.b2a_hex(datahex).decode()
-            print(str_rec)
-            # file_rec.write(str_rec + ';\n')
-            if len(str_rec) == 66 and str_rec[0:4] == '5551':
-                # print(str_rec[0:4])
-                get_mess = JY61.DueData(datahex)
-
-                # print(str_time)
-                print(get_mess[6], get_mess[7])
-            #     file_rec.write(str(get_mess[6]) + ';' + str(get_mess[7]) + ';\n')
-            # file_rec.close()
-        # end_time = time.time()
-        # time_mess += 'Read:' + str(round((end_time - start_time) * 1000, 4)) + ';'
-
-        # start_time = time.time()
-        # ser.close()
-        # end_time = time.time()
-        # time_mess += 'Close:' + str(round((end_time - start_time) * 1000, 4)) + ';'
-        # print(time_mess)
+        except Exception as e:
+            print(e)
+            print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
+            print(f"error line:{e.__traceback__.tb_lineno}")
 

@@ -5,7 +5,73 @@ import math
 import crcmod
 
 
-# 速度改16进制(2022-10-25
+# 绘制矩形（2022-11-21）
+def draw_rectangles(is_ver, rectangles_list, rgb_draw, rect_threshold, yaw_avg, f, w, a, b, p_x):
+    num_rect = 0
+    num_line = 0
+    dis_line = [[0.0, 0.0]]
+    for rect_value in rectangles_list:
+        if is_ver:
+            if rect_value[0] != rect_value[1]:
+                num_rect += 1
+                draw_left = rect_value[0]
+                draw_right = rect_value[1]
+                draw_button = rect_value[2]
+                draw_top = rect_value[3]
+                xd_lt, yd_lt = points_dis2xy(yaw_avg, draw_left, draw_top, f, w, a, b, p_x)
+                xd_lb, yd_lb = points_dis2xy(yaw_avg, draw_left, draw_button, f, w, a, b, p_x)
+                xd_rt, yd_rt = points_dis2xy(yaw_avg, draw_right, draw_top, f, w, a, b, p_x)
+                xd_rb, yd_rb = points_dis2xy(yaw_avg, draw_right, draw_button, f, w, a, b, p_x)
+                if abs(draw_right - draw_left) > rect_threshold:
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_lb, yd_lb), (0, 0, 255), 2)
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_rt, yd_rt), (0, 0, 255), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_lb, yd_lb), (0, 0, 255), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_rt, yd_rt), (0, 0, 255), 2)
+                    dis_line.append([draw_left, draw_right])
+                else:
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_lb, yd_lb), (255, 0, 0), 2)
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_rt, yd_rt), (255, 0, 0), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_lb, yd_lb), (255, 0, 0), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_rt, yd_rt), (255, 0, 0), 2)
+            else:
+                num_line += 1
+                xd1_b, yd1_b = points_dis2xy(yaw_avg, rect_value[0], rect_value[2], f, w, a, b, p_x)
+                xd2_b, yd2_b = points_dis2xy(yaw_avg, rect_value[0], rect_value[3], f, w, a, b, p_x)
+                cv2.line(rgb_draw, (xd1_b, yd1_b), (xd2_b, yd2_b), (0, 255, 0), 2)
+        else:
+            if rect_value[2] != rect_value[3]:
+                num_rect += 1
+                draw_left = rect_value[0]
+                draw_right = rect_value[1]
+                draw_button = rect_value[2]
+                draw_top = rect_value[3]
+                xd_lt, yd_lt = points_dis2xy(yaw_avg, draw_left, draw_top, f, w, a, b, p_x)
+                xd_lb, yd_lb = points_dis2xy(yaw_avg, draw_left, draw_button, f, w, a, b, p_x)
+                xd_rt, yd_rt = points_dis2xy(yaw_avg, draw_right, draw_top, f, w, a, b, p_x)
+                xd_rb, yd_rb = points_dis2xy(yaw_avg, draw_right, draw_button, f, w, a, b, p_x)
+                if abs(draw_top - draw_button) > rect_threshold:
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_lb, yd_lb), (0, 0, 255), 2)
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_rt, yd_rt), (0, 0, 255), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_lb, yd_lb), (0, 0, 255), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_rt, yd_rt), (0, 0, 255), 2)
+                    dis_line.append([draw_top, draw_button])
+                else:
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_lb, yd_lb), (255, 0, 0), 2)
+                    cv2.line(rgb_draw, (xd_lt, yd_lt), (xd_rt, yd_rt), (255, 0, 0), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_lb, yd_lb), (255, 0, 0), 2)
+                    cv2.line(rgb_draw, (xd_rb, yd_rb), (xd_rt, yd_rt), (255, 0, 0), 2)
+            else:
+                num_line += 1
+                xd1_b, yd1_b = points_dis2xy(yaw_avg, rect_value[0], rect_value[2], f, w, a, b, p_x)
+                xd2_b, yd2_b = points_dis2xy(yaw_avg, rect_value[1], rect_value[2], f, w, a, b, p_x)
+                cv2.line(rgb_draw, (xd1_b, yd1_b), (xd2_b, yd2_b), (0, 255, 0), 2)
+
+    if len(dis_line) > 1:
+        del dis_line[0]
+    return rgb_draw, num_rect, num_line, dis_line
+
+
+# 速度改16进制(2022-10-25）
 def trans_speed(str_speed):
     int_speed = int(str_speed)
     cmd_speed = hex(int_speed)[2:]
@@ -27,6 +93,22 @@ def set_order(str_order):
         hex_crc8 = bytes.fromhex(hex(crc8.crcValue)[2:])
     hex_order = hex_order + hex_crc8
     return hex_order
+
+
+# 根据偏航角、水平距离、垂直距离，反推坐标点在图像上的像素位置（2022-11-18）
+def points_dis2xy(angle, org_x, org_y, f, w, a, b, p_x):
+    cos_angle = math.cos(math.radians(-angle))
+    sin_angle = math.sin(math.radians(-angle))
+    flo_w = org_x * cos_angle + org_y * sin_angle
+    flo_h = org_y * cos_angle - org_x * sin_angle
+    y_back = (f * w / flo_h - b) / a
+    temp_x = abs(flo_w) * (a * y_back + b) / w
+    if flo_w < 0:
+        x_back = p_x - temp_x
+    else:
+        x_back = p_x + temp_x
+
+    return int(x_back), int(y_back)
 
 
 # 根据水平线距离反推图像像素高度(2022-10-25)

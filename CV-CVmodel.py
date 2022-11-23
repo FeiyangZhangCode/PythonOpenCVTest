@@ -23,16 +23,10 @@ def calc_vertical(int_width, int_height, f, w, a, b):
 
 
 def get_red(img_rgb):
-    # 提取区域，下半部分
-    # img_new = np.zeros((mid_height, img_width, 3), np.uint8)
-    # for j in range(0, img_width, 1):
-    #     for i in range(0, mid_height, 1):
-    #         img_new[i, j] = img_rgb[i + mid_height, j]
-    # img_red = img_new.copy()
     img_new = np.zeros((img_height, img_width, 3), np.uint8)
     # 提取红色部分
-    b_threshold = 155
-    g_threshold = 155
+    b_threshold = 70
+    g_threshold = 140
     r_threshold = 195
     b, g, r = cv2.split(img_rgb)
     for j_ut in range(0, img_width, 1):
@@ -49,6 +43,13 @@ def get_red(img_rgb):
     ret, gra_red_temp = cv2.threshold(gra_red_temp, 10, 255, cv2.THRESH_BINARY)
     gra_red_temp = CVFunc.func_noise_1(gra_red_temp, 400)
     return gra_red_temp
+    # rgb_half = img_rgb.copy()
+    # rgb_half[0:principal_y - 50, :] = (0, 0, 0)
+    # hsv_half = cv2.cvtColor(rgb_half, cv2.COLOR_BGR2HSV)
+    # low_range = np.array([0, 123, 100])
+    # high_range = np.array([5, 255, 255])
+    # gra_half_red = cv2.inRange(hsv_half, low_range, high_range)
+    # return gra_half_red
 
 
 def get_parameter(gra_edge):
@@ -164,8 +165,9 @@ def get_parameter(gra_edge):
 # 开始主程序
 # 提取图像
 
-file_name = 'Cali-0-163645'
-rgb_frame = cv2.imread('./TestData/' + file_name + '.jpg')
+file_name = 'Cali-0-144239'
+rgb_cap = cv2.imread('./TestData/' + file_name + '.jpg')
+rgb_frame = cv2.resize(rgb_cap, (960, 540))
 # 获取图像位置参数
 img_test = rgb_frame.copy()
 img_height = int(img_test.shape[0])
@@ -184,9 +186,9 @@ if img_width < 1920:
 
 # 提取红色线,手动去除校准用红色区域
 gra_red = get_red(img_test)
-gra_red[0:principal_y + 100, :] = 0
-gra_red[principal_y + 50:, 0:int(img_width * 0.3)] = 0
-gra_red[principal_y + 50:, int(img_width * 0.7):img_width] = 0
+gra_red[0:principal_y + 80, :] = 0
+gra_red[principal_y + 50:, 0:int(img_width * 0.15)] = 0
+gra_red[principal_y + 50:, int(img_width * 0.85):img_width] = 0
 
 cv2.imshow('t0', gra_red)
 # Canny提取边界
@@ -261,7 +263,6 @@ for i in range(0, mid_height, 1):
             gra_half[i, j] = 0
         else:
             gra_half[i, j] = 255
-
 
 
 cv2.imshow('test', img_test)

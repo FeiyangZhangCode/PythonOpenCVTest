@@ -29,15 +29,8 @@ maxCan = 400
 
 # 前后单目、IMU串口、超声波串口编号
 camera_id = 0
-imu_com = 'COM14'
+imu_com = 'COM8'
 
-
-# 返回摄像头格式
-def get_camera_data(cap, num):
-    str_Info = 'C' + str(num) + ':' + str(cap.get(3)) + '*' + str(cap.get(4)) + '; FPS' + str(cap.get(5)) + '\n'
-    str_fourcc = str("".join([chr((int(cap.get(cv2.CAP_PROP_FOURCC)) >> 8 * k) & 0xFF) for k in range(4)])) + '\n'
-    str_Info = str_Info + str_fourcc
-    return str_Info
 
 # 抓取图片，确认视频流的读入
 def image_put(q, c_id):
@@ -356,34 +349,35 @@ def imu_get(q_id, q_im, q_y, lock_ser, file_address):
             # lock_ser.release()
             if imu_rec:
                 str_imu = binascii.b2a_hex(imu_rec).decode()
-                file_rec = open(file_address + 'JY61.txt', 'a')
+                # file_rec = open(file_address + 'JY61.txt', 'a')
+                file_rec = open('./TestData/JY61.txt', 'a')
                 str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
                 if len(str_imu) == 66 and str_imu[0:4] == '5551':
                     jy_list = JY61.DueData(imu_rec)
                     if str(type(jy_list)) != "<class 'NoneType'>":
                         sav_mess = ("normal;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;\n" % jy_list)
                         send_list = [round(jy_list[6], 2), round(jy_list[7], 2), round(jy_list[8], 2)]
-                        # print(str(round(jy_list[6], 2)), str(round(jy_list[7], 2)), str(round(jy_list[8], 2)))
+                        print(str(round(jy_list[6], 2)), str(round(jy_list[7], 2)), str(round(jy_list[8], 2)))
                         q_id.put(send_list)
                         q_id.get() if q_id.qsize() > 1 else time.sleep(0.005)
                         q_im.put(send_list)
                         q_im.get() if q_im.qsize() > 1 else time.sleep(0.005)
                     else:
                         sav_mess = ('NoneType;' + str_imu + ';\n')
-                        se_i.flushOutput()
+                        se_i.lushOutput()
                 else:
                     sav_mess = ('error;' + str_imu + ';\n')
                     se_i.flushOutput()
                 file_rec.write(str_time + ';' + sav_mess)
                 file_rec.close()
 
-            if not q_y.empty():
-                yaw_c = q_y.get()
-                if abs(yaw_c) <= 0.1:
-                    str_zero = 'ff aa 52'
-                    hex_zero = bytes.fromhex(str_zero)
-                    se_i.write(hex_zero)
-                    cv2.waitKey(50)
+            # if not q_y.empty():
+            #     yaw_c = q_y.get()
+            #     if abs(yaw_c) <= 0.1:
+            #         str_zero = 'ff aa 52'
+            #         hex_zero = bytes.fromhex(str_zero)
+            #         se_i.write(hex_zero)
+            #         cv2.waitKey(50)
 
         except Exception as e:
             print(e)
@@ -400,12 +394,12 @@ def quit_all():
 def run_multi_camera():
     # 新建文件夹,读取时间作为文件名
     str_fileAddress = './TestData/'
-    str_Time = datetime.datetime.now().strftime('%Y%m%d-%H%M')
-    # file_rec = open(str_fileHome + str_Time + '.txt', 'w', encoding='utf-8')
-    str_fileAddress += str_Time
-    if not os.path.exists(str_fileAddress):
-        os.makedirs(str_fileAddress)
-    str_fileAddress += '/'
+    # str_Time = datetime.datetime.now().strftime('%Y%m%d-%H%M')
+    # # file_rec = open(str_fileHome + str_Time + '.txt', 'w', encoding='utf-8')
+    # str_fileAddress += str_Time
+    # if not os.path.exists(str_fileAddress):
+    #     os.makedirs(str_fileAddress)
+    # str_fileAddress += '/'
 
     mp.set_start_method(method='spawn')  # init
     processes = []
@@ -417,9 +411,9 @@ def run_multi_camera():
     queue_imu_dis = mp.Queue(maxsize=2)
     queue_imu_main = mp.Queue(maxsize=2)
 
-    processes.append(mp.Process(target=image_put, args=(queue_c, camera_id)))
-    processes.append(
-        mp.Process(target=distance_get, args=(queue_c, queue_imu_dis, queue_dis_yaw, lock, camera_id, str_fileAddress)))
+    # processes.append(mp.Process(target=image_put, args=(queue_c, camera_id)))
+    # processes.append(
+    #     mp.Process(target=distance_get, args=(queue_c, queue_imu_dis, queue_dis_yaw, lock, camera_id, str_fileAddress)))
     processes.append(
         mp.Process(target=imu_get, args=(queue_imu_dis, queue_imu_main, queue_dis_yaw, lock, str_fileAddress)))
 

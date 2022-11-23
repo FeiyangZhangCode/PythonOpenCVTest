@@ -6,7 +6,7 @@ import crcmod
 import keyboard
 import datetime
 
-se = serial.Serial('COM1', 115200, timeout=0.09)
+se = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.09)
 # se = serial.Serial('COM6', 115200, timeout=0.09)
 
 str_fileAddress = './TestData/' + datetime.datetime.now().strftime('%H%M%S') + '-Record.txt'
@@ -274,7 +274,7 @@ if __name__ == '__main__':
     # 设置移动速度
     cmd_2_moveSpeed = trans_speed('25')
     # 设置旋转速度
-    cmd_2_rotatePalstance = trans_speed('25')
+    cmd_2_rotatePalstance = trans_speed('10')
 
     # 启动水系统
     hex_sprayStart = set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_3_stop + cmd_4_start)
