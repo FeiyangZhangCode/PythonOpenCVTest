@@ -36,6 +36,10 @@ se = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.1)
 vehicle_left = 118
 vehicle_right = 127
 vehicle_front = 148
+vehicle_width = vehicle_left + vehicle_right
+
+# 光伏板尺寸
+panel_width = 667
 
 # 左右单目阈值
 camera_TH_L = 100
@@ -1296,241 +1300,247 @@ def correct_yaw(now_yaw, target_yaw, cmd_34, q_i, q_d, q_c, q_ci, file_address):
 
 
 # 校正偏移距离
-def correct_deviation(now_dis, target_dis, cmd_34, q_i, q_d, q_c, q_ci, file_address):
-    get_correct_err = 0
-    side_l = now_dis
-    move_dis = now_dis - target_dis
-
-    loop_nofeedback = 0  # 累加无反馈次数
-    threshold_nofeedback = 10  # 累计无反馈上限值
-
+def correct_deviation(dis_dev, target_l, target_r, cmd_34, q_i, q_d, q_c, q_ci, file_address):
     imu_yaw = 0.0
     side_l = -999.9
+    side_r = -999.9
     cam_yaw = -999.9
-
     target_count = 0
-
-    # 获取偏航角
-    if not q_i.empty():
-        imu_list = q_i.get()
-        imu_yaw = -imu_list[2]
-
-    # 左旋30度
-    get_correct_err = correct_yaw(imu_yaw, -30.0, cmd_34, q_i, q_d, q_c, q_ci, file_address)
-    # 无反馈退出
-    if get_correct_err == 98:
-        return get_correct_err
-
-    # correct_speed = 25
-    # cmd_2_corSpeed = CVFunc.trans_speed(str(correct_speed))
-    # if move_dis < 0:
-    #     hex_correctDis = CVFunc.set_order(cmd_0_head + cmd_1_moveBack + cmd_2_corSpeed + cmd_34)
-    # else:
-    #     hex_correctDis = CVFunc.set_order(cmd_0_head + cmd_1_moveFront + cmd_2_corSpeed + cmd_34)
-    # move_times = int(abs(move_dis) * 2 / 10)    # 30度角，移动距离需要是偏移量的2倍
-    # # 根据距离，发送动作命令
-    # for i in range(0, move_times, 1):
-    #     se.write(hex_correctDis)
-    #     is_read, ret_list = read_message(hex_correctDis)
-    #     if is_read:
-    #         q_c.put(ret_list)
-    #         q_c.get() if q_c.qsize() > 1 else time.sleep(0.001)
-    #         q_ci.put(ret_list)
-    #         q_ci.get() if q_ci.qsize() > 1 else time.sleep(0.001)
-    #     # str_send = binascii.b2a_hex(hex_correctDis).decode('utf-8')
-    #     # str_Time_cy = datetime.datetime.now().strftime('%H:%M:%S.%f')
-    #     # file_rec = open(file_address + 'Control.txt', 'a')
-    #     # file_rec.write(str_Time_cy + ';CorrectYaw;s;' + str_send + ';\n')
-    #     # file_rec.close()
-    #     # 等待串口发送
-    #     cv2.waitKey(40)
-    #     # 读取主板反馈
-    #     hex_rec = se.readline()
-    #     if hex_rec:
-    #         pass
-    #         # 收到反馈
-    #         # str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
-    #         # file_rec = open(file_address + 'Control.txt', 'a')
-    #         # file_rec.write(str_Time_cy + ';CorrectYaw;r;' + str_rec + ';\n')
-    #         # file_rec.close()
-    #     else:
-    #         # 累计无反馈次数，继续执行
-    #         loop_nofeedback += 1
-    #         print('无反馈', str(loop_nofeedback))
-    #         if loop_nofeedback >= threshold_nofeedback:
-    #             get_correct_err = 98
-    #             print('无反馈，结束运行')
-    #     # 获取视觉数据
-    #     if not q_d.empty():
-    #         dis_list = q_d.get()
-    #         side_l = dis_list[1]
-    #     # 获取偏航角
-    #     if not q_i.empty():
-    #         imu_list = q_i.get()
-    #         imu_yaw = -imu_list[2]
-    #     # 如果调整过程中偏航，则保持-30度角
-    #     if abs(imu_yaw + 30.0) > 5.0:
-    #         # 左旋30度
-    #         get_correct_err = correct_yaw(imu_yaw, -30.0, cmd_34, q_i, q_d, q_c, q_ci, file_address)
-    #         # 无反馈退出
-    #         if get_correct_err == 98:
-    #             return get_correct_err
-
-    # 等待视觉测距稳定
-    for i in range(0, 3, 1):
-        hex_correctDis = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_34)
-        se.write(hex_correctDis)
-        is_read, ret_list = read_message(hex_correctDis)
-        if is_read:
-            q_c.put(ret_list)
-            q_c.get() if q_c.qsize() > 1 else time.sleep(0.001)
-            q_ci.put(ret_list)
-            q_ci.get() if q_ci.qsize() > 1 else time.sleep(0.001)
-        # str_send = binascii.b2a_hex(hex_correctDis).decode('utf-8')
-        # str_Time_cy = datetime.datetime.now().strftime('%H:%M:%S.%f')
-        # file_rec = open(file_address + 'Control.txt', 'a')
-        # file_rec.write(str_Time_cy + ';CorrectYaw;s;' + str_send + ';\n')
-        # file_rec.close()
-        # 等待串口发送
-        cv2.waitKey(40)
-        # 读取主板反馈
-        hex_rec = se.readline()
-        if hex_rec:
-            pass
-            # 收到反馈
-            # str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
-            # file_rec = open(file_address + 'Control.txt', 'a')
-            # file_rec.write(str_Time_cy + ';CorrectYaw;r;' + str_rec + ';\n')
-            # file_rec.close()
-        else:
-            # 累计无反馈次数，继续执行
-            loop_nofeedback += 1
-            print('无反馈', str(loop_nofeedback))
-            if loop_nofeedback >= threshold_nofeedback:
-                get_correct_err = 98
-                print('无反馈，结束运行')
-        # 获取视觉数据
-        if not q_d.empty():
-            dis_list = q_d.get()
-            side_temp = dis_list[1]
-            if side_temp != -999.9:
-                side_l = side_temp
-            side_temp = dis_list[3]
-            if side_temp != -999.9:
-                cam_yaw = side_temp
-        # 获取偏航角
-        if not q_i.empty():
-            imu_list = q_i.get()
-            imu_yaw = -imu_list[2]
-
-    move_dis = round(side_l - target_dis, 2)
-    # while abs(move_dis) > 10.0:
-    while target_count <= 5:
-        print(move_dis)
-
-        if target_count == 0:
-            correct_speed = 5
-            cmd_2_corSpeed = CVFunc.trans_speed(str(correct_speed))
-            if move_dis < 0:
-                hex_correctDis = CVFunc.set_order(cmd_0_head + cmd_1_moveBack + cmd_2_corSpeed + cmd_34)
-            else:
-                hex_correctDis = CVFunc.set_order(cmd_0_head + cmd_1_moveFront + cmd_2_corSpeed + cmd_34)
-        else:
-            hex_correctDis = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_34)
-        # 根据距离，发送动作命令
-        se.write(hex_correctDis)
-        is_read, ret_list = read_message(hex_correctDis)
-        if is_read:
-            q_c.put(ret_list)
-            q_c.get() if q_c.qsize() > 1 else time.sleep(0.001)
-            q_ci.put(ret_list)
-            q_ci.get() if q_ci.qsize() > 1 else time.sleep(0.001)
-        # str_send = binascii.b2a_hex(hex_correctDis).decode('utf-8')
-        # str_Time_cy = datetime.datetime.now().strftime('%H:%M:%S.%f')
-        # file_rec = open(file_address + 'Control.txt', 'a')
-        # file_rec.write(str_Time_cy + ';CorrectYaw;s;' + str_send + ';\n')
-        # file_rec.close()
-        # 等待串口发送
-        cv2.waitKey(40)
-        # 读取主板反馈
-        hex_rec = se.readline()
-        if hex_rec:
-            pass
-            # 收到反馈
-            # str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
-            # file_rec = open(file_address + 'Control.txt', 'a')
-            # file_rec.write(str_Time_cy + ';CorrectYaw;r;' + str_rec + ';\n')
-            # file_rec.close()
-        else:
-            # 累计无反馈次数，继续执行
-            loop_nofeedback += 1
-            print('无反馈', str(loop_nofeedback))
-            if loop_nofeedback >= threshold_nofeedback:
-                get_correct_err = 98
-                print('无反馈，结束运行')
-        # 获取偏航角
-        if not q_i.empty():
-            imu_list = q_i.get()
-            imu_yaw = -imu_list[2]
-        # 获取视觉数据
-        if not q_d.empty():
-            dis_list = q_d.get()
-            side_l = dis_list[1]
-            cam_yaw = dis_list[3]
-        # 如果调整过程中偏航，则保持-30度角
-        if cam_yaw != -999.9:
-            now_yaw = cam_yaw
-        else:
-            now_yaw = imu_yaw
-        if abs(now_yaw + 30.0) > 5.0:
-            # 左旋30度
-            get_correct_err = correct_yaw(now_yaw, -30.0, cmd_34, q_i, q_d, q_c, q_ci, file_address)
-            # 无反馈退出
-            if get_correct_err == 98:
-                return get_correct_err
-        # 获取视觉数据，更新剩余距离
-                # 获取视觉数据
-        if not q_d.empty():
-            dis_list = q_d.get()
-            side_l = dis_list[1]
-            cam_yaw = dis_list[3]
-        if side_l != -999.9:
-            move_dis = side_l - target_dis
-        else:
-            if move_dis < 0:
-                move_dis = move_dis + 2
-            else:
-                move_dis = move_dis - 2
-
-        if move_dis <= 10:      # 如果相差距离不大于10，则认为已完成，停止
-            target_count += 1
-        else:
-            target_count = 0
-
-    # 获取偏航角
-    if not q_i.empty():
-        imu_list = q_i.get()
-        imu_yaw = -imu_list[2]
-    # 获取视觉数据
+# 1.根据偏移方向，对应旋转30度
+    # 获取视觉
     if not q_d.empty():
         dis_list = q_d.get()
-        side_l = dis_list[1]
+        side_f = dis_list[0]
+        if dis_list[1] != -999.9:
+            side_l = dis_list[1]
+        if dis_list[2] != -999.9:
+            side_r = dis_list[2]
         cam_yaw = dis_list[3]
-    # 如果调整过程中偏航，则保持-30度角
-    if cam_yaw != -999.9:
+    # 获取IMU
+    if not q_i.empty():
+        imu_list = q_i.get()
+        imu_roll = imu_list[0]
+        imu_pitch = imu_list[1]
+        imu_yaw = -imu_list[2]
+    # 提取偏航角
+    if cam_yaw != -999.9 or 0.0:
         now_yaw = cam_yaw
     else:
         now_yaw = imu_yaw
-
-    get_correct_err = correct_yaw(now_yaw, 0.0, cmd_34, q_i, q_d, q_c, q_ci, file_address)
+    if dis_dev < 0:
+        rot_angle = 30.0
+    else:
+        rot_angle = -30.0
+    get_correct_err = correct_yaw(now_yaw, rot_angle, cmd_34, q_i, q_d, q_c, q_ci, file_address)
     # 无反馈退出
     if get_correct_err == 98:
         return get_correct_err
+# 2.等待视觉测距稳定，确定移动距离
+    for i in range(0, 3, 1):
+        hex_correctDis = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_34)
+        get_correct_err = single_action(hex_correctDis, q_c, q_ci, file_address)
+        # 报错退出
+        if get_correct_err > 90:
+            return get_correct_err
+        # hex_correctDis = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_34)
+        # se.write(hex_correctDis)
+        # is_read, ret_list = read_message(hex_correctDis)
+        # if is_read:
+        #     q_c.put(ret_list)
+        #     q_c.get() if q_c.qsize() > 1 else time.sleep(0.001)
+        #     q_ci.put(ret_list)
+        #     q_ci.get() if q_ci.qsize() > 1 else time.sleep(0.001)
+        # # str_send = binascii.b2a_hex(hex_correctDis).decode('utf-8')
+        # # str_Time_cy = datetime.datetime.now().strftime('%H:%M:%S.%f')
+        # # file_rec = open(file_address + 'Control.txt', 'a')
+        # # file_rec.write(str_Time_cy + ';CorrectYaw;s;' + str_send + ';\n')
+        # # file_rec.close()
+        # # 等待串口发送
+        # cv2.waitKey(40)
+        # # 读取主板反馈
+        # hex_rec = se.readline()
+        # if hex_rec:
+        #     pass
+        #     # 收到反馈
+        #     # str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
+        #     # file_rec = open(file_address + 'Control.txt', 'a')
+        #     # file_rec.write(str_Time_cy + ';CorrectYaw;r;' + str_rec + ';\n')
+        #     # file_rec.close()
+        # else:
+        #     # 累计无反馈次数，继续执行
+        #     loop_nofeedback += 1
+        #     print('无反馈', str(loop_nofeedback))
+        #     if loop_nofeedback >= threshold_nofeedback:
+        #         get_correct_err = 98
+        #         print('无反馈，结束运行')
+        # 获取视觉数据
+        if not q_d.empty():
+            dis_list = q_d.get()
+            if dis_list[1] != -999.9:
+                side_l = dis_list[1]
+            if dis_list[2] != -999.9:
+                side_r = dis_list[2]
+            if dis_list[3] != -999.9:
+                cam_yaw = dis_list[3]
+        # 获取偏航角
+        if not q_i.empty():
+            imu_list = q_i.get()
+            imu_yaw = -imu_list[2]
+        if dis_dev < 0:
+            if side_r != -999.9:
+                break
+        else:
+            if side_l != -999.9:
+                break
+    if dis_dev < 0:
+        if side_r != -999.9:
+            move_dis = round(side_r - target_r, 2)
+        else:
+            move_dis = abs(dis_dev)
+    else:
+        if side_l != -999.9:
+            move_dis = round(side_l - target_l, 2)
+        else:
+            move_dis = abs(dis_dev)
+# 3.直线移动
+    while target_count <= 5:
+        print(move_dis)
+        # 根据剩余距离设定速度和前进后退
+        if target_count == 0:
+            if abs(move_dis) > 50:
+                correct_speed = 10
+            else:
+                correct_speed = 5
+            cmd_2_corSpeed = CVFunc.trans_speed(str(correct_speed))
+            if move_dis < 0:
+                hex_correctDis = CVFunc.set_order(cmd_0_head + cmd_1_moveBack + cmd_2_corSpeed + cmd_34)
+                int_move = 2
+            else:
+                hex_correctDis = CVFunc.set_order(cmd_0_head + cmd_1_moveFront + cmd_2_corSpeed + cmd_34)
+                int_move = 1
+        else:
+            hex_correctDis = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_34)
+            int_move = 0
+        get_correct_err = single_action(hex_correctDis, q_c, q_ci, file_address)
+        # 键盘输入急停
+        if keyboard.is_pressed('b'):
+            hex_correctDis = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_34)
+            int_move = 0
+            get_correct_err = single_action(hex_correctDis, q_c, q_ci, file_address)
+            get_correct_err = 96
+            return get_correct_err
+        # 无反馈退出
+        if get_correct_err == 98:
+            return get_correct_err
+        # # 根据距离，发送动作命令
+        # se.write(hex_correctDis)
+        # is_read, ret_list = read_message(hex_correctDis)
+        # if is_read:
+        #     q_c.put(ret_list)
+        #     q_c.get() if q_c.qsize() > 1 else time.sleep(0.001)
+        #     q_ci.put(ret_list)
+        #     q_ci.get() if q_ci.qsize() > 1 else time.sleep(0.001)
+        # # str_send = binascii.b2a_hex(hex_correctDis).decode('utf-8')
+        # # str_Time_cy = datetime.datetime.now().strftime('%H:%M:%S.%f')
+        # # file_rec = open(file_address + 'Control.txt', 'a')
+        # # file_rec.write(str_Time_cy + ';CorrectYaw;s;' + str_send + ';\n')
+        # # file_rec.close()
+        # # 等待串口发送
+        # cv2.waitKey(40)
+        # # 读取主板反馈
+        # hex_rec = se.readline()
+        # if hex_rec:
+        #     pass
+        #     # 收到反馈
+        #     # str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
+        #     # file_rec = open(file_address + 'Control.txt', 'a')
+        #     # file_rec.write(str_Time_cy + ';CorrectYaw;r;' + str_rec + ';\n')
+        #     # file_rec.close()
+        # else:
+        #     # 累计无反馈次数，继续执行
+        #     loop_nofeedback += 1
+        #     print('无反馈', str(loop_nofeedback))
+        #     if loop_nofeedback >= threshold_nofeedback:
+        #         get_correct_err = 98
+        #         print('无反馈，结束运行')
+        # 获取偏航角
+        # 获取视觉
+        if not q_d.empty():
+            dis_list = q_d.get()
+            side_f = dis_list[0]
+            side_l = dis_list[1]
+            side_r = dis_list[2]
+            cam_yaw = dis_list[3]
+        # 获取IMU
+        if not q_i.empty():
+            imu_list = q_i.get()
+            imu_roll = imu_list[0]
+            imu_pitch = imu_list[1]
+            imu_yaw = -imu_list[2]
+        # 提取偏航角
+        if cam_yaw != -999.9 or 0.0:
+            now_yaw = cam_yaw
+        else:
+            now_yaw = imu_yaw
+        # 如果移动过程中偏航角变化较大，进行调整
+        if abs(now_yaw - rot_angle) > 10.0:
+            get_correct_err = correct_yaw(now_yaw, rot_angle, cmd_34, q_i, q_d, q_c, q_ci, file_address)
+            # 报错退出
+            if get_correct_err > 90:
+                return get_correct_err
+        # 获取视觉数据，更新剩余距离
+        # 获取视觉
+        if not q_d.empty():
+            dis_list = q_d.get()
+            side_l = dis_list[1]
+            side_r = dis_list[2]
+            cam_yaw = dis_list[3]
+        if dis_dev < 0:
+            if side_r != -999.9:
+                move_dis = side_r - target_r
+            else:
+                if int_move == 2:
+                    move_dis = move_dis + 2
+                elif int_move == 1:
+                    move_dis = move_dis - 2
+        else:
+            if side_l != -999.9:
+                move_dis = side_l - target_l
+            else:
+                if int_move == 2:
+                    move_dis = move_dis + 2
+                elif int_move == 1:
+                    move_dis = move_dis - 2
+        # 如果相差距离不大于10，开始累加5次后进入下一步；否则继续调整
+        if abs(move_dis) <= 10:
+            target_count += 1
+        else:
+            target_count = 0
+# 4.旋转回直
+    # 获取视觉
+    if not q_d.empty():
+        dis_list = q_d.get()
+        cam_yaw = dis_list[3]
+    # 获取IMU
+    if not q_i.empty():
+        imu_list = q_i.get()
+        imu_yaw = -imu_list[2]
+    # 提取偏航角
+    if cam_yaw != -999.9 or 0.0:
+        now_yaw = cam_yaw
+    else:
+        now_yaw = imu_yaw
+    get_correct_err = correct_yaw(now_yaw, 0.0, cmd_34, q_i, q_d, q_c, q_ci, file_address)
+    # 报错退出
+    if get_correct_err > 90:
+        return get_correct_err
+
+    return get_correct_err
 
 
 # 前后清洗
-def go_wash(is_front, cmd_2, cmd_34, q_i, q_c, q_ci, q_d, lock_ser, file_address, loop_times, wash_left, wash_front):
-    sensor_state = 0  # 传感器状态，99是传感器异常，98是无反馈，97是运行报错
+def go_wash(is_front, cmd_2, cmd_34, q_i, q_c, q_ci, q_d, lock_ser, file_address, loop_times, wash_left, wash_right):
+    get_state = 0  # 传感器状态，99是传感器异常，98是无反馈，97是运行报错
     loop_nofeedback = 0  # 累加无反馈次数
     threshold_nofeedback = 10  # 累计无反馈上限值
     imu_yaw = 0.0
@@ -1540,129 +1550,156 @@ def go_wash(is_front, cmd_2, cmd_34, q_i, q_c, q_ci, q_d, lock_ser, file_address
 
     if is_front:
         hex_wash = CVFunc.set_order(cmd_0_head + cmd_1_moveFront + cmd_2 + cmd_34)
-        hex_slow = CVFunc.set_order(cmd_0_head + cmd_1_moveFront + cmd_2_slow + cmd_34)
     else:
         hex_wash = CVFunc.set_order(cmd_0_head + cmd_1_moveBack + cmd_2 + cmd_34)
-        hex_slow = CVFunc.set_order(cmd_0_head + cmd_1_moveBack + cmd_2_slow + cmd_34)
-
+    hex_stop = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_34)
     side_f = -999.9
     side_l = -999.9
     side_r = -999.9
     cam_yaw = -999.9
 
-    # 获取视觉测距
+    # 获取视觉
     if not q_d.empty():
         dis_list = q_d.get()
         side_f = dis_list[0]
         side_l = dis_list[1]
         side_r = dis_list[2]
         cam_yaw = dis_list[3]
-    # 获取偏航角
+    # 获取IMU
     if not q_i.empty():
         imu_list = q_i.get()
         imu_roll = imu_list[0]
         imu_pitch = imu_list[1]
         imu_yaw = -imu_list[2]
+    # 提取偏航角
+    if cam_yaw != -999.9 or 0.0:
+        now_yaw = cam_yaw
+    else:
+        now_yaw = imu_yaw
 
-    while sensor_state == 0 and (loop_num <= loop_times or loop_times == -1):
-        no_feedback = True
-        while no_feedback:
-            try:
-                se.write(hex_wash)
-                # 传输主板控制命令
-                is_read, ret_list = read_message(hex_wash)
-                if is_read:
-                    q_c.put(ret_list)
-                    q_c.get() if q_c.qsize() > 1 else time.sleep(0.001)
-                    q_ci.put(ret_list)
-                    q_ci.get() if q_ci.qsize() > 1 else time.sleep(0.001)
-                # 主板控制命令存入txt
-                # str_send = binascii.b2a_hex(hex_wash).decode('utf-8')
-                # str_Time_wash = datetime.datetime.now().strftime('%H:%M:%S.%f')
-                # file_rec = open(file_address + 'Control.txt', 'a')
-                # file_rec.write(str_Time_wash + ';wash;s;' + str_send + ';\n')
-                # file_rec.close()
+    while get_state == 0 and (loop_num <= loop_times or loop_times == -1):
+        loop_num += 1
+        # 清洗移动
+        get_state = single_action(hex_wash, q_c, q_ci, file_address)
+        if keyboard.is_pressed('b'):    # 急停按钮，标识报错并跳出
+            get_error = single_action(hex_stop, q_c, q_ci, file_address)
+            get_state = 96
+            return get_state
+        if get_state > 90:
+            get_error = single_action(hex_stop, q_c, q_ci, file_address)
+            return get_state
+        # 获取视觉
+        if not q_d.empty():
+            dis_list = q_d.get()
+            side_f = dis_list[0]
+            side_l = dis_list[1]
+            side_r = dis_list[2]
+            cam_yaw = dis_list[3]
+        # 获取IMU
+        if not q_i.empty():
+            imu_list = q_i.get()
+            imu_roll = imu_list[0]
+            imu_pitch = imu_list[1]
+            imu_yaw = -imu_list[2]
+        # 提取偏航角
+        if cam_yaw != -999.9 or 0.0:
+            now_yaw = cam_yaw
+        else:
+            now_yaw = imu_yaw
+        # 提取偏移距离
+        # if side_l != -999.9 and ((side_r != -999.9 and wash_left <= wash_right) or side_r == -999.9):
+        #     dis_deviation = side_l - wash_left
+        # elif side_r != -999.9 and ((side_l != -999.9 and wash_right < wash_left) or side_l == -999.9):
+        #     dis_deviation = wash_right - side_r
+        # else:
+        #     dis_deviation = 0.0
+        if wash_left <= wash_right:
+            if side_l != -999.9:
+                dis_deviation = side_l - wash_left
+            else:
+                dis_deviation = 0.0
+        else:
+            if side_r != -999.9:
+                dis_deviation = wash_right - side_r
+            else:
+                dis_deviation = 0.0
+        # 判断是否到边、偏移或偏航
+        if keyboard.is_pressed('e'):  # 临时用于到边判断
+            get_state = single_action(hex_stop, q_c, q_ci, file_address)
+            get_state = 1
+        elif abs(dis_deviation) >= 30.0:
+            get_state = correct_deviation(dis_deviation, wash_left, wash_right, cmd_34, q_i, q_d, q_c, q_ci, file_address)
+        elif abs(now_yaw) >= 3.0:
+            get_state = correct_yaw(now_yaw, 0.0, cmd_34, q_i, q_d, q_c, q_ci, file_address)  # 偏航校正
+        if get_state > 90:
+            get_error = single_action(hex_stop, q_c, q_ci, file_address)
+            return get_state
 
-                # 等待串口发送
-                cv2.waitKey(40)
+    return get_state
 
-                # 获取视觉测距
-                if not q_d.empty():
-                    dis_list = q_d.get()
-                    side_f = dis_list[0]
-                    side_l = dis_list[1]
-                    side_r = dis_list[2]
-                    cam_yaw = dis_list[3]
-                # 获取偏航角
-                if not q_i.empty():
-                    imu_list = q_i.get()
-                    imu_roll = imu_list[0]
-                    imu_pitch = imu_list[1]
-                    imu_yaw = -imu_list[2]
 
-                # 读取串口反馈
-                hex_rec = se.readline()
+# 到边调头
+def turn_around(cmd_34, q_i, q_c, q_ci, q_d, lock_ser, file_address):
+    get_state = 0
+    cmd_2_rotateSpeed = CVFunc.trans_speed('10')
+    hex_turnAround = CVFunc.set_order(cmd_0_head + cmd_1_rotateRight + cmd_2_rotateSpeed + cmd_34)
+    hex_stop = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_34)
+    imu_yaw = 0.0
+    cam_yaw = -999.9
+    loop_times = 0
+    # 获取偏航角
+    if not q_i.empty():
+        imu_list = q_i.get()
+        imu_yaw = -imu_list[2]
+    else:
+        cv2.waitKey(50)
+        if not q_i.empty():
+            imu_list = q_i.get()
+            imu_yaw = -imu_list[2]
+    # 向右不断旋转，直至转到180±20度
+    while -160 < imu_yaw < 160 and loop_times < 90:
+        get_state = single_action(hex_turnAround, q_c, q_ci, file_address)
+        if keyboard.is_pressed('b'):    # 急停按钮，标识报错并跳出
+            get_error = single_action(hex_stop, q_c, q_ci, file_address)
+            get_state = 96
+            return get_state
+        if get_state > 90:
+            get_error = single_action(hex_stop, q_c, q_ci, file_address)
+            return get_state
 
-                # 获取视觉测距
-                if not q_d.empty():
-                    dis_list = q_d.get()
-                    side_f = dis_list[0]
-                    side_l = dis_list[1]
-                    side_r = dis_list[2]
-                    cam_yaw = dis_list[3]
-                # 获取偏航角
-                if not q_i.empty():
-                    imu_list = q_i.get()
-                    imu_roll = imu_list[0]
-                    imu_pitch = imu_list[1]
-                    imu_yaw = -imu_list[2]
-                if cam_yaw != -999.9:
-                    now_yaw = cam_yaw
-                else:
-                    now_yaw = imu_yaw
+        # 获取偏航角
+        if not q_i.empty():
+            imu_list = q_i.get()
+            imu_yaw = -imu_list[2]
 
-                if hex_rec:
-                    # 收到反馈，跳出反馈循环，累加次数
-                    loop_num += 1
-                    no_feedback = False
-                    # 主板传感数据存入txt
-                    # str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
-                    # file_rec = open(file_address + 'Control.txt', 'a')
-                    # file_rec.write(str_Time_wash + ';wash;r;' + str_rec + ';\n')
-                    # file_rec.close()
+        loop_times += 1
+    print(loop_times)
+    # 获取视觉
+    if not q_d.empty():
+        dis_list = q_d.get()
+        cam_yaw = dis_list[3]
+    # 获取IMU
+    if not q_i.empty():
+        imu_list = q_i.get()
+        imu_yaw = -imu_list[2]
+    # 提取偏航角
+    if cam_yaw != -999.9 or 0.0:
+        now_yaw = cam_yaw
+    else:
+        now_yaw = imu_yaw
+    get_state = correct_yaw(now_yaw, 0.0, cmd_34, q_i, q_d, q_c, q_ci, file_address)
+    # 报错退出
+    if get_state > 90:
+        return get_state
+    get_state = single_action(hex_stop, q_c, q_ci, file_address)
+    # 报错退出
+    if get_state > 90:
+        return get_state
 
-                    if is_front and side_f != -999.9 and side_f < wash_front:
-                        print('到达前端边界')
-                        get_correct = 1
-                        return get_correct
+    return get_state
 
-                    if side_l != -999.9 and abs(side_l - wash_left) > 50.0:
-                        print('与原航线偏移' + str(round(wash_left - side_l, 1)) + '毫米')
-                        get_correct = correct_deviation(side_l, wash_left, cmd_34, q_i, q_d, q_c, q_ci, file_address)
-                        if get_correct == 98:
-                            return get_correct
-                        print('完成偏移校正，继续清洗')
-                    elif abs(now_yaw) > 10.0:     # 清洗偏航，执行偏航校正
-                        print('与原方向偏航' + str(now_yaw) + '度')
-                        get_correct = correct_yaw(now_yaw, 0.0, cmd_34, q_i, q_d, q_c, q_ci, file_address)  # 偏航校正
-                        if get_correct == 98:
-                            return get_correct
-                        print('完成偏航校正，继续清洗')
-                else:
-                    # 重新发送命令，并累计无反馈次数
-                    loop_nofeedback += 1
-                    print('无反馈', str(loop_nofeedback))
-                    if loop_nofeedback >= threshold_nofeedback:
-                        sensor_state = 98
-                        no_feedback = False
-            except Exception as e_sa:
-                print(e_sa)
-                print(f'error file:{e_sa.__traceback__.tb_frame.f_globals["__file__"]}')
-                print(f"error line:{e_sa.__traceback__.tb_lineno}")
-                sensor_state = 97
-                no_feedback = False
 
-    return sensor_state
+
 
 
 def single_action(hex_action, q_c, q_ci, str_fileAddress):
@@ -1741,9 +1778,11 @@ def autocontrol_run(q_i, q_d, q_c, q_ci, lock_ser, file_address):
 
     # 设置清洗参数
     loop_time = 2  # 前进+后退算作1次
-    wash_loops = 70     # 设置前后清洗的移动距离限定，-1代表无限定。每次200ms，5次相当于1秒
+    wash_loops = -1     # 设置前后清洗的移动距离限定，-1代表无限定。每次200ms，5次相当于1秒
     cmd_2_washSpeed = CVFunc.trans_speed('20')      # 清洗移动速度
+
     wash_left_dis = 100.0
+    wash_right_dis = panel_width - vehicle_width - wash_left_dis
     wash_front_dis = 400.0
 
     imu_yaw = 0.0
@@ -1760,7 +1799,7 @@ def autocontrol_run(q_i, q_d, q_c, q_ci, lock_ser, file_address):
     no_feedBack = False
     while True:
         glo_is_init = True
-        # 测试通信
+# 1.测试通信
         in_init = True
         while in_init:
             str_init = 'aa 01 00 00 00 00 a8'
@@ -1815,7 +1854,7 @@ def autocontrol_run(q_i, q_d, q_c, q_ci, lock_ser, file_address):
                 print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
                 print(f"error line:{e.__traceback__.tb_lineno}")
 
-        # 单个动作测试
+# 2.单个动作测试
         is_oneAction = True
         glo_is_init = True
         while is_oneAction:
@@ -1849,25 +1888,27 @@ def autocontrol_run(q_i, q_d, q_c, q_ci, lock_ser, file_address):
         if no_feedBack:
             continue
 
-        # 获取视觉数据
+# 3.如果角度有偏航，进行校正
+        # 获取视觉
         if not q_d.empty():
             dis_list = q_d.get()
             side_f = dis_list[0]
-            side_l = dis_list[1]
-            side_r = dis_list[2]
+            if dis_list[1] != -999.9:
+                side_l = dis_list[1]
+            if dis_list[2] != -999.9:
+                side_r = dis_list[2]
             cam_yaw = dis_list[3]
-        # 获取偏航角
+        # 获取IMU
         if not q_i.empty():
             imu_list = q_i.get()
             imu_roll = imu_list[0]
             imu_pitch = imu_list[1]
             imu_yaw = -imu_list[2]
+        # 提取偏航角
         if cam_yaw != -999.9 or 0.0:
             now_yaw = cam_yaw
         else:
             now_yaw = imu_yaw
-
-        # 如果角度有偏航，进行校正
         if abs(now_yaw) > 1.0:
             print('校正偏航')
             get_state = correct_yaw(now_yaw, 0.0, board_cmd, q_i, q_d, q_c, q_ci, file_address)
@@ -1880,164 +1921,135 @@ def autocontrol_run(q_i, q_d, q_c, q_ci, lock_ser, file_address):
             print('无偏航')
         if no_feedBack:
             continue
-        # 获取视觉数据
-        if not q_d.empty():
-            dis_list = q_d.get()
-            side_f = dis_list[0]
-            side_l = dis_list[1]
-            side_r = dis_list[2]
-            cam_yaw = dis_list[3]
 
-        # 如果距离轨迹有偏移，进行校正
-        if side_l != -999.9:
-            if abs(side_l - wash_left_dis) > 10:
+# 4. 如果距离轨迹有偏移，进行校正
+        # 静止获取左右任意一边距离
+        for i in range(0, 6, 1):
+            if not q_d.empty():
+                dis_list = q_d.get()
+                side_f = dis_list[0]
+                if dis_list[1] != -999.9:
+                    side_l = dis_list[1]
+                if dis_list[2] != -999.9:
+                    side_r = dis_list[2]
+                cam_yaw = dis_list[3]
+            get_state = single_action(hex_allStop, q_c, q_ci, file_address)
+            if get_state == 98:
+                print('无反馈，结束运行')
+                no_feedBack = True
+                break
+            if not q_d.empty():
+                dis_list = q_d.get()
+                side_f = dis_list[0]
+                if dis_list[1] != -999.9:
+                    side_l = dis_list[1]
+                if dis_list[2] != -999.9:
+                    side_r = dis_list[2]
+                cam_yaw = dis_list[3]
+            if side_l != -999.9 and side_r != -999.9 and abs(panel_width - (side_l + side_r + vehicle_width)) < 50:
+                break
+        if side_l != -999.9 or side_r != -999.9:
+            dis_deviation = 0.0
+            if side_l != -999.9 and abs(side_l - wash_left_dis) > 20:
+                dis_deviation = side_l - wash_left_dis
+            elif side_r != -999.9 and abs(side_r - wash_right_dis) > 20:
+                dis_deviation = wash_right_dis - side_r
+            print('偏航距离' + str(dis_deviation))
+            if dis_deviation != 0.0:
                 print('校正偏移')
-                get_state = correct_deviation(side_l, wash_left_dis, board_cmd, q_i, q_d, q_c, q_ci, file_address)
+                get_state = correct_deviation(dis_deviation, wash_left_dis, wash_right_dis, board_cmd, q_i, q_d, q_c, q_ci, file_address)
                 # 无反馈退出
                 if get_state == 98:
                     print('无反馈，结束运行')
+                    no_feedBack = True
+                elif get_state == 96:
+                    print('手动急停')
                     no_feedBack = True
                 print('校正完成')
             else:
                 print('无偏移')
         else:
-            print('未找到左边界')
+            print('未找到边界')
         if no_feedBack:
             continue
-        # # 进入自动控制
-        # print('进入自动控制')
-        # get_state = 0
-        # # 建立通信，开始执行
-        # for loop_num in range(0, loop_time, 1):
-        #     # 清洗前进
-        #     print('清洗前行，次数', str(wash_loops))
-        #     get_state = go_wash(True, cmd_2_washSpeed, board_cmd, q_i, q_c, q_ci, q_d, lock_ser, file_address, wash_loops, wash_left_dis, wash_front_dis)
-        #     if get_state == 98:
-        #         no_feedBack = True
-        #         break
-        #     elif get_state > 90:
-        #         print('故障')
-        #
-        #     # 到达位置，停止并调整
-        #     glo_is_init = True
-        #     print('到达前端')
-        #     for i in range(0, 3, 1):
-        #         hex_correctDis = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + board_cmd)
-        #         se.write(hex_correctDis)
-        #         is_read, ret_list = read_message(hex_correctDis)
-        #         if is_read:
-        #             q_c.put(ret_list)
-        #             q_c.get() if q_c.qsize() > 1 else time.sleep(0.001)
-        #             q_ci.put(ret_list)
-        #             q_ci.get() if q_ci.qsize() > 1 else time.sleep(0.001)
-        #         # str_send = binascii.b2a_hex(hex_correctDis).decode('utf-8')
-        #         # str_Time_cy = datetime.datetime.now().strftime('%H:%M:%S.%f')
-        #         # file_rec = open(file_address + 'Control.txt', 'a')
-        #         # file_rec.write(str_Time_cy + ';CorrectYaw;s;' + str_send + ';\n')
-        #         # file_rec.close()
-        #         # 等待串口发送
-        #         cv2.waitKey(40)
-        #         # 读取主板反馈
-        #         hex_rec = se.readline()
-        #         if hex_rec:
-        #             pass
-        #             # 收到反馈
-        #             # str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
-        #             # file_rec = open(file_address + 'Control.txt', 'a')
-        #             # file_rec.write(str_Time_cy + ';CorrectYaw;r;' + str_rec + ';\n')
-        #             # file_rec.close()
-        #         # 获取视觉数据
-        #         if not q_d.empty():
-        #             dis_list = q_d.get()
-        #             side_f = dis_list[0]
-        #             side_l = dis_list[1]
-        #             side_r = dis_list[2]
-        #             cam_yaw = dis_list[3]
-        #         # 获取偏航角
-        #         if not q_i.empty():
-        #             imu_list = q_i.get()
-        #             imu_roll = imu_list[0]
-        #             imu_pitch = imu_list[1]
-        #             imu_yaw = -imu_list[2]
-        #         if cam_yaw != -999.9:
-        #             now_yaw = cam_yaw
-        #         else:
-        #             now_yaw = imu_yaw
-        #         # 如果偏航或者视觉偏航角与IMU偏航角相差较大，进行旋转后置零
-        #         if (cam_yaw != -999.9 and abs(cam_yaw - imu_yaw) > 1.0) or abs(now_yaw) > 1.0:
-        #             get_state = correct_yaw(cam_yaw, 0.0, board_cmd, q_i, q_d, q_c, q_ci, file_address)
-        #             # 无反馈退出
-        #             if get_state == 98:
-        #                 print('无反馈，结束运行')
-        #                 no_feedBack = True
-        #     glo_is_init = False
-        #
-        #     # 清洗后退
-        #     print('清洗后退，次数', str(wash_loops))
-        #     get_state = go_wash(False, cmd_2_washSpeed, board_cmd, q_i, q_c, q_ci, q_d, lock_ser, file_address, wash_loops, wash_left_dis, wash_front_dis)
-        #     if get_state == 98:
-        #         no_feedBack = True
-        #         break
-        #     elif get_state > 90:
-        #         print('故障')
-        #
-        #     # 到达位置，停止并调整
-        #     glo_is_init = True
-        #     print('到达后端')
-        #     for i in range(0, 3, 1):
-        #         hex_correctDis = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + board_cmd)
-        #         se.write(hex_correctDis)
-        #         is_read, ret_list = read_message(hex_correctDis)
-        #         if is_read:
-        #             q_c.put(ret_list)
-        #             q_c.get() if q_c.qsize() > 1 else time.sleep(0.001)
-        #             q_ci.put(ret_list)
-        #             q_ci.get() if q_ci.qsize() > 1 else time.sleep(0.001)
-        #         # str_send = binascii.b2a_hex(hex_correctDis).decode('utf-8')
-        #         # str_Time_cy = datetime.datetime.now().strftime('%H:%M:%S.%f')
-        #         # file_rec = open(file_address + 'Control.txt', 'a')
-        #         # file_rec.write(str_Time_cy + ';CorrectYaw;s;' + str_send + ';\n')
-        #         # file_rec.close()
-        #         # 等待串口发送
-        #         cv2.waitKey(40)
-        #         # 读取主板反馈
-        #         hex_rec = se.readline()
-        #         if hex_rec:
-        #             pass
-        #             # 收到反馈
-        #             # str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
-        #             # file_rec = open(file_address + 'Control.txt', 'a')
-        #             # file_rec.write(str_Time_cy + ';CorrectYaw;r;' + str_rec + ';\n')
-        #             # file_rec.close()
-        #         # 获取视觉数据
-        #         if not q_d.empty():
-        #             dis_list = q_d.get()
-        #             side_f = dis_list[0]
-        #             side_l = dis_list[1]
-        #             side_r = dis_list[2]
-        #             cam_yaw = dis_list[3]
-        #         # 获取偏航角
-        #         if not q_i.empty():
-        #             imu_list = q_i.get()
-        #             imu_roll = imu_list[0]
-        #             imu_pitch = imu_list[1]
-        #             imu_yaw = -imu_list[2]
-        #         if cam_yaw != -999.9:
-        #             now_yaw = cam_yaw
-        #         else:
-        #             now_yaw = imu_yaw
-        #         # 如果偏航或者视觉偏航角与IMU偏航角相差较大，进行旋转后置零
-        #         if (cam_yaw != -999.9 and abs(cam_yaw - imu_yaw) > 1.0) or abs(now_yaw) > 1.0:
-        #             get_state = correct_yaw(cam_yaw, 0.0, board_cmd, q_i, q_d, q_c, q_ci, file_address)
-        #             # 无反馈退出
-        #             if get_state == 98:
-        #                 print('无反馈，结束运行')
-        #                 no_feedBack = True
-        #     glo_is_init = False
-        #
-        #     print('循环剩余', str(loop_time - loop_num))
-        # if no_feedBack:
-        #     continue
+
+
+# 5.进入自动控制
+        print('进入自动控制')
+        get_state = 0
+        # 建立通信，开始执行
+        for loop_num in range(0, loop_time, 1):
+            # 清洗前进
+            print('清洗前行，次数', str(wash_loops))
+            get_state = go_wash(True, cmd_2_washSpeed, board_cmd, q_i, q_c, q_ci, q_d, lock_ser, file_address, wash_loops, wash_left_dis, wash_right_dis)
+            if get_state == 98:
+                print('无反馈，结束运行')
+                no_feedBack = True
+                break
+            elif get_state == 96:
+                print('手动急停')
+                no_feedBack = True
+                break
+            elif get_state > 90:
+                print('故障')
+                no_feedBack = True
+                break
+            elif get_state == 1:
+                print('到边')
+
+            # 到达位置，停止并调整
+            get_state = turn_around(board_cmd, q_i, q_c, q_ci, q_d, lock_ser, file_address)
+            if get_state == 98:
+                print('无反馈，结束运行')
+                no_feedBack = True
+                break
+            elif get_state == 96:
+                print('手动急停')
+                no_feedBack = True
+                break
+            elif get_state > 90:
+                print('故障')
+                no_feedBack = True
+                break
+            print('完成调头')
+
+            # 清洗后退
+            print('清洗后退，次数', str(wash_loops))
+            get_state = go_wash(True, cmd_2_washSpeed, board_cmd, q_i, q_c, q_ci, q_d, lock_ser, file_address, wash_loops, wash_right_dis, wash_left_dis)
+            if get_state == 98:
+                print('无反馈，结束运行')
+                no_feedBack = True
+                break
+            elif get_state == 96:
+                print('手动急停')
+                no_feedBack = True
+                break
+            elif get_state > 90:
+                print('故障')
+                no_feedBack = True
+                break
+            elif get_state == 1:
+                print('到边')
+
+            # 到达位置，停止并调整
+            get_state = turn_around(board_cmd, q_i, q_c, q_ci, q_d, lock_ser, file_address)
+            if get_state == 98:
+                print('无反馈，结束运行')
+                no_feedBack = True
+                break
+            elif get_state == 96:
+                print('手动急停')
+                no_feedBack = True
+                break
+            elif get_state > 90:
+                print('故障')
+                no_feedBack = True
+                break
+            print('完成调头')
+
+            print('循环剩余', str(loop_time - loop_num))
+        if no_feedBack:
+            continue
 
 
 if __name__ == '__main__':
