@@ -180,6 +180,8 @@ def distance_get(q_c, q_i, q_yi, q_ym, q_img, q_f, q_l, q_r, lock_ser, cap_id, f
         ver_weight = 0.0
         ver_sum = 0.0
         angles_ver = [0.0]
+        num_yaw_l = 0
+        num_yaw_r = 0
         # 水平线计算偏航角参数
         hor_avg = 0.0
         hor_weight = 0.0
@@ -228,6 +230,12 @@ def distance_get(q_c, q_i, q_yi, q_ym, q_img, q_f, q_l, q_r, lock_ser, cap_id, f
 
                                 if abs(angle_tan) < 45:
                                     ver_sum += angle_tan
+                                    if w1 < 0 and w2 < 0:
+                                        num_yaw_l += 1
+                                    elif w1 >= 0 and w2 >= 0:
+                                        num_yaw_r += 1
+                                    else:
+                                        num_yaw_l += 1
                                     if num_ver == 0:
                                         num_ver = 1
                                         angles_ver[0] = angle_tan
@@ -253,25 +261,14 @@ def distance_get(q_c, q_i, q_yi, q_ym, q_img, q_f, q_l, q_r, lock_ser, cap_id, f
                             ver_weight += 1
                     if ver_weight > 0:
                         ver_avg = ver_avg / ver_weight
-                # if num_hor > 0:
-                #     temp_avg = hor_sum / num_hor
-                #     for angle_hor in angles_hor:
-                #         if abs(temp_avg - angle_hor) < 10.0:
-                #             hor_avg += angle_hor
-                #             hor_weight += 1
-                #     if hor_weight > 0:
-                #         hor_avg = hor_avg / hor_weight
-
+                yaw_avg = ver_avg
                 # 根据垂直线角度和水平线角度，输出偏航角yaw_avg，统一为偏左为负，偏右为正
                 # 如果计算了偏航角，则反馈给IMU进程和计算进程
-                if ver_avg != 0.0:
-                    yaw_avg = ver_avg
+                if ver_avg != 0.0 and num_yaw_l != 0 and num_yaw_r != 0:
                     q_yi.put(yaw_avg)
                     q_yi.get() if q_yi.qsize() > 1 else time.sleep(0.005)
                     q_ym.put(round(yaw_avg, 2))
                     q_ym.get() if q_ym.qsize() > 1 else time.sleep(0.005)
-                # elif hor_avg != 0.0:
-                #     yaw_avg = hor_avg - 90.0
                 else:
                     yaw_avg = 0.0
                 end_time = time.time()
@@ -1627,9 +1624,9 @@ def go_wash(is_front, cmd_2, cmd_34, q_i, q_c, q_ci, q_d, lock_ser, file_address
         if keyboard.is_pressed('e'):  # 临时用于到边判断
             get_state = single_action(hex_stop, q_c, q_ci, file_address)
             get_state = 1
-        elif abs(dis_deviation) >= 30.0:
+        elif abs(dis_deviation) >= 20.0:
             get_state = correct_deviation(dis_deviation, wash_left, wash_right, cmd_34, q_i, q_d, q_c, q_ci, file_address)
-        elif abs(now_yaw) >= 3.0:
+        elif abs(now_yaw) >= 2.5:
             get_state = correct_yaw(now_yaw, 0.0, cmd_34, q_i, q_d, q_c, q_ci, file_address)  # 偏航校正
         if get_state > 90:
             get_error = single_action(hex_stop, q_c, q_ci, file_address)
@@ -1641,7 +1638,7 @@ def go_wash(is_front, cmd_2, cmd_34, q_i, q_c, q_ci, q_d, lock_ser, file_address
 # 到边调头
 def turn_around(cmd_34, q_i, q_c, q_ci, q_d, lock_ser, file_address):
     get_state = 0
-    cmd_2_rotateSpeed = CVFunc.trans_speed('10')
+    cmd_2_rotateSpeed = CVFunc.trans_speed('40')
     hex_turnAround = CVFunc.set_order(cmd_0_head + cmd_1_rotateRight + cmd_2_rotateSpeed + cmd_34)
     hex_stop = CVFunc.set_order(cmd_0_head + cmd_1_stop + cmd_2_speed0 + cmd_34)
     imu_yaw = 0.0
@@ -1657,7 +1654,7 @@ def turn_around(cmd_34, q_i, q_c, q_ci, q_d, lock_ser, file_address):
             imu_list = q_i.get()
             imu_yaw = -imu_list[2]
     # 向右不断旋转，直至转到180±20度
-    while loop_times < 90:
+    while loop_times < 21:
         get_state = single_action(hex_turnAround, q_c, q_ci, file_address)
         if keyboard.is_pressed('b'):    # 急停按钮，标识报错并跳出
             get_error = single_action(hex_stop, q_c, q_ci, file_address)
@@ -1673,7 +1670,7 @@ def turn_around(cmd_34, q_i, q_c, q_ci, q_d, lock_ser, file_address):
             imu_yaw = -imu_list[2]
 
         loop_times += 1
-    print(loop_times)
+
     # 获取视觉
     if not q_d.empty():
         dis_list = q_d.get()
@@ -1753,7 +1750,7 @@ def single_action(hex_action, q_c, q_ci, str_fileAddress):
 
 # 执行自动控制
 def autocontrol_run(q_i, q_d, q_c, q_ci, lock_ser, file_address):
-    global glo_is_init
+    global glo_is_init, panel_width
 
     print('Auto Start')
 
@@ -1774,9 +1771,9 @@ def autocontrol_run(q_i, q_d, q_c, q_ci, lock_ser, file_address):
 
 
     # 设置清洗参数
-    loop_time = 2  # 前进+后退算作1次
+    loop_time = 4  # 单向算作1次
     wash_loops = -1     # 设置前后清洗的移动距离限定，-1代表无限定。每次200ms，5次相当于1秒
-    cmd_2_washSpeed = CVFunc.trans_speed('20')      # 清洗移动速度
+    cmd_2_washSpeed = CVFunc.trans_speed('30')      # 清洗移动速度
 
     wash_left_dis = 100.0
     wash_right_dis = panel_width - vehicle_width - wash_left_dis
@@ -1885,98 +1882,111 @@ def autocontrol_run(q_i, q_d, q_c, q_ci, lock_ser, file_address):
         if no_feedBack:
             continue
 
-# 3.如果角度有偏航，进行校正
-        # 获取视觉
-        if not q_d.empty():
-            dis_list = q_d.get()
-            side_f = dis_list[0]
-            if dis_list[1] != -999.9:
-                side_l = dis_list[1]
-            if dis_list[2] != -999.9:
-                side_r = dis_list[2]
-            cam_yaw = dis_list[3]
-        # 获取IMU
-        if not q_i.empty():
-            imu_list = q_i.get()
-            imu_roll = imu_list[0]
-            imu_pitch = imu_list[1]
-            imu_yaw = -imu_list[2]
-        # 提取偏航角
-        if cam_yaw != -999.9 or 0.0:
-            now_yaw = cam_yaw
-        else:
-            now_yaw = imu_yaw
-        if abs(now_yaw) > 1.0:
-            print('校正偏航')
-            get_state = correct_yaw(now_yaw, 0.0, board_cmd, q_i, q_d, q_c, q_ci, file_address)
-            # 无反馈退出
-            if get_state == 98:
-                print('无反馈，结束运行')
-                no_feedBack = True
-            print('校正完成')
-        else:
-            print('无偏航')
-        if no_feedBack:
-            continue
-
-# 4. 如果距离轨迹有偏移，进行校正
-        # 静止获取左右任意一边距离
-        for i in range(0, 6, 1):
-            if not q_d.empty():
-                dis_list = q_d.get()
-                side_f = dis_list[0]
-                if dis_list[1] != -999.9:
-                    side_l = dis_list[1]
-                if dis_list[2] != -999.9:
-                    side_r = dis_list[2]
-                cam_yaw = dis_list[3]
-            get_state = single_action(hex_allStop, q_c, q_ci, file_address)
-            if get_state == 98:
-                print('无反馈，结束运行')
-                no_feedBack = True
-                break
-            if not q_d.empty():
-                dis_list = q_d.get()
-                side_f = dis_list[0]
-                if dis_list[1] != -999.9:
-                    side_l = dis_list[1]
-                if dis_list[2] != -999.9:
-                    side_r = dis_list[2]
-                cam_yaw = dis_list[3]
-            if side_l != -999.9 and side_r != -999.9 and abs(panel_width - (side_l + side_r + vehicle_width)) < 50:
-                break
-        if side_l != -999.9 or side_r != -999.9:
-            dis_deviation = 0.0
-            if side_l != -999.9 and abs(side_l - wash_left_dis) > 20:
-                dis_deviation = side_l - wash_left_dis
-            elif side_r != -999.9 and abs(side_r - wash_right_dis) > 20:
-                dis_deviation = wash_right_dis - side_r
-            print('偏航距离' + str(dis_deviation))
-            if dis_deviation != 0.0:
-                print('校正偏移')
-                get_state = correct_deviation(dis_deviation, wash_left_dis, wash_right_dis, board_cmd, q_i, q_d, q_c, q_ci, file_address)
-                # 无反馈退出
-                if get_state == 98:
-                    print('无反馈，结束运行')
-                    no_feedBack = True
-                elif get_state == 96:
-                    print('手动急停')
-                    no_feedBack = True
-                print('校正完成')
-            else:
-                print('无偏移')
-        else:
-            print('未找到边界')
-        if no_feedBack:
-            continue
-
-
-# 5.进入自动控制
+# 3.进入自动控制
         print('进入自动控制')
         get_state = 0
         # 建立通信，开始执行
         for loop_num in range(0, loop_time, 1):
-            # 清洗前进
+            # 3.1.如果角度有偏航，进行校正
+            # 获取视觉
+            if not q_d.empty():
+                dis_list = q_d.get()
+                side_f = dis_list[0]
+                if dis_list[1] != -999.9:
+                    side_l = dis_list[1]
+                if dis_list[2] != -999.9:
+                    side_r = dis_list[2]
+                cam_yaw = dis_list[3]
+            # 获取IMU
+            if not q_i.empty():
+                imu_list = q_i.get()
+                imu_roll = imu_list[0]
+                imu_pitch = imu_list[1]
+                imu_yaw = -imu_list[2]
+            # 提取偏航角
+            if cam_yaw != -999.9 or 0.0:
+                now_yaw = cam_yaw
+            else:
+                now_yaw = imu_yaw
+            # 偏航大于1.0就调整拉直
+            if abs(now_yaw) > 1.0:
+                print('偏航角度' + str(now_yaw))
+                get_state = correct_yaw(now_yaw, 0.0, board_cmd, q_i, q_d, q_c, q_ci, file_address)
+                # 无反馈退出
+                if get_state == 98:
+                    print('无反馈，结束运行')
+                    no_feedBack = True
+                print('校正完成')
+            else:
+                print('偏航在范围内')
+            if no_feedBack:
+                continue
+
+            # 3.2. 如果距离轨迹有偏移，进行校正
+            # 静止获取左右任意一边距离。如果同时获取到两边，则更新光伏板宽度。
+            for i in range(0, 6, 1):
+                if not q_d.empty():
+                    dis_list = q_d.get()
+                    side_f = dis_list[0]
+                    if dis_list[1] != -999.9:
+                        side_l = dis_list[1]
+                    if dis_list[2] != -999.9:
+                        side_r = dis_list[2]
+                    cam_yaw = dis_list[3]
+                get_state = single_action(hex_allStop, q_c, q_ci, file_address)
+                if get_state == 98:
+                    print('无反馈，结束运行')
+                    no_feedBack = True
+                    break
+                if not q_d.empty():
+                    dis_list = q_d.get()
+                    side_f = dis_list[0]
+                    if dis_list[1] != -999.9:
+                        side_l = dis_list[1]
+                    if dis_list[2] != -999.9:
+                        side_r = dis_list[2]
+                    cam_yaw = dis_list[3]
+                if side_l != -999.9 and side_r != -999.9 and abs(panel_width - (side_l + side_r + vehicle_width)) < 50:
+                    panel_width = side_l + side_r + vehicle_width
+                    if wash_left_dis <= wash_right_dis:
+                        wash_right_dis = panel_width - vehicle_width - wash_left_dis
+                    else:
+                        wash_left_dis = panel_width - vehicle_width - wash_right_dis
+                    print('光伏板全长' + str(round(panel_width, 0)))
+                    break
+            if side_l != -999.9 or side_r != -999.9:
+                dis_deviation = 0.0
+                # 优先判断距离近的边，如果没有再判断距离远的边
+                if wash_left_dis <= wash_right_dis:
+                    if side_l != -999.9 and abs(side_l - wash_left_dis) > 20:
+                        dis_deviation = side_l - wash_left_dis
+                    elif side_r != -999.9 and abs(side_r - wash_right_dis) > 20:
+                        dis_deviation = wash_right_dis - side_r
+                else:
+                    if side_r != -999.9 and abs(side_r - wash_right_dis) > 20:
+                        dis_deviation = wash_right_dis - side_r
+                    elif side_l != -999.9 and abs(side_l - wash_left_dis) > 20:
+                        dis_deviation = side_l - wash_left_dis
+                if abs(dis_deviation) > 20.0:
+                    print('偏移距离' + str(dis_deviation))
+                    get_state = correct_deviation(dis_deviation, wash_left_dis, wash_right_dis, board_cmd, q_i, q_d,
+                                                  q_c, q_ci, file_address)
+                    # 无反馈退出
+                    if get_state == 98:
+                        print('无反馈，结束运行')
+                        no_feedBack = True
+                    elif get_state == 96:
+                        print('手动急停')
+                        no_feedBack = True
+                    print('校正完成')
+                else:
+                    print('偏移在范围内')
+            else:
+                print('未找到边界')
+            if no_feedBack:
+                continue
+
+            # 3.3.清洗前进
             print('清洗前行，次数', str(wash_loops))
             get_state = go_wash(True, cmd_2_washSpeed, board_cmd, q_i, q_c, q_ci, q_d, lock_ser, file_address, wash_loops, wash_left_dis, wash_right_dis)
             if get_state == 98:
@@ -1994,7 +2004,7 @@ def autocontrol_run(q_i, q_d, q_c, q_ci, lock_ser, file_address):
             elif get_state == 1:
                 print('到边')
 
-            # 到达位置，停止并调整
+            # 3.4.到达位置，调头
             get_state = turn_around(board_cmd, q_i, q_c, q_ci, q_d, lock_ser, file_address)
             if get_state == 98:
                 print('无反馈，结束运行')
@@ -2010,41 +2020,44 @@ def autocontrol_run(q_i, q_d, q_c, q_ci, lock_ser, file_address):
                 break
             print('完成调头')
 
-            # 清洗后退
-            print('清洗后退，次数', str(wash_loops))
-            get_state = go_wash(True, cmd_2_washSpeed, board_cmd, q_i, q_c, q_ci, q_d, lock_ser, file_address, wash_loops, wash_right_dis, wash_left_dis)
-            if get_state == 98:
-                print('无反馈，结束运行')
-                no_feedBack = True
-                break
-            elif get_state == 96:
-                print('手动急停')
-                no_feedBack = True
-                break
-            elif get_state > 90:
-                print('故障')
-                no_feedBack = True
-                break
-            elif get_state == 1:
-                print('到边')
-
-            # 到达位置，停止并调整
-            get_state = turn_around(board_cmd, q_i, q_c, q_ci, q_d, lock_ser, file_address)
-            if get_state == 98:
-                print('无反馈，结束运行')
-                no_feedBack = True
-                break
-            elif get_state == 96:
-                print('手动急停')
-                no_feedBack = True
-                break
-            elif get_state > 90:
-                print('故障')
-                no_feedBack = True
-                break
-            print('完成调头')
-
-            print('循环剩余', str(loop_time - loop_num))
+            # # 清洗后退
+            # print('清洗后退，次数', str(wash_loops))
+            # get_state = go_wash(True, cmd_2_washSpeed, board_cmd, q_i, q_c, q_ci, q_d, lock_ser, file_address, wash_loops, wash_right_dis, wash_left_dis)
+            # if get_state == 98:
+            #     print('无反馈，结束运行')
+            #     no_feedBack = True
+            #     break
+            # elif get_state == 96:
+            #     print('手动急停')
+            #     no_feedBack = True
+            #     break
+            # elif get_state > 90:
+            #     print('故障')
+            #     no_feedBack = True
+            #     break
+            # elif get_state == 1:
+            #     print('到边')
+            #
+            # # 到达位置，停止并调整
+            # get_state = turn_around(board_cmd, q_i, q_c, q_ci, q_d, lock_ser, file_address)
+            # if get_state == 98:
+            #     print('无反馈，结束运行')
+            #     no_feedBack = True
+            #     break
+            # elif get_state == 96:
+            #     print('手动急停')
+            #     no_feedBack = True
+            #     break
+            # elif get_state > 90:
+            #     print('故障')
+            #     no_feedBack = True
+            #     break
+            # print('完成调头')
+    # 3.5.参数调整更新
+            temp_lr = wash_right_dis
+            wash_right_dis = wash_left_dis
+            wash_left_dis = temp_lr
+            print('循环剩余' + str(loop_time - loop_num))
         if no_feedBack:
             continue
 
