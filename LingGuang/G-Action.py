@@ -1657,7 +1657,7 @@ def turn_around(cmd_34, q_i, q_c, q_ci, q_d, lock_ser, file_address):
             imu_list = q_i.get()
             imu_yaw = -imu_list[2]
     # 向右不断旋转，直至转到180±20度
-    while -160 < imu_yaw < 160 and loop_times < 90:
+    while loop_times < 90:
         get_state = single_action(hex_turnAround, q_c, q_ci, file_address)
         if keyboard.is_pressed('b'):    # 急停按钮，标识报错并跳出
             get_error = single_action(hex_stop, q_c, q_ci, file_address)
@@ -1697,9 +1697,6 @@ def turn_around(cmd_34, q_i, q_c, q_ci, q_d, lock_ser, file_address):
         return get_state
 
     return get_state
-
-
-
 
 
 def single_action(hex_action, q_c, q_ci, str_fileAddress):
