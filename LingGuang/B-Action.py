@@ -1,5 +1,4 @@
 import multiprocessing
-
 import numpy as np
 import CVFunc
 import signal
@@ -169,14 +168,14 @@ def distance_get(q_c, q_i, q_yi, q_ym, q_img, q_f, q_l, q_r, lock_ser, cap_id, f
         # 灰度并二值化
         start_time = time.time()
         gra_gray = cv2.cvtColor(rgb_half, cv2.COLOR_BGR2GRAY)
-        thre_gray, gra_threshold = cv2.threshold(gra_gray, 160, 255, cv2.THRESH_BINARY)
+        thre_gray, gra_threshold = cv2.threshold(gra_gray, 140, 255, cv2.THRESH_BINARY)
         end_time = time.time()
         time_mess += 'Gra:' + str(round((end_time - start_time) * 1000, 4)) + ';'
         # Canny
         start_time = time.time()
         rgb_thres = cv2.cvtColor(gra_threshold, cv2.COLOR_GRAY2BGR)
         rgb_thres_hough = rgb_thres.copy()
-        gra_canny = cv2.Canny(rgb_half, 200, 500)
+        gra_canny = cv2.Canny(rgb_half, 100, 400)
         end_time = time.time()
         time_mess += 'Can:' + str(round((end_time - start_time) * 1000, 4)) + ';'
 
@@ -384,7 +383,7 @@ def distance_get(q_c, q_i, q_yi, q_ym, q_img, q_f, q_l, q_r, lock_ser, cap_id, f
                         for line_l in lines_left:
                             has_change = False
                             for rect_l in rectangles_left:
-                                if 0.0 < line_l[0] - rect_l[1] <= 25.0:
+                                if 0.0 < line_l[0] - rect_l[1] <= 100.0:
                                     temp_left = rect_l[0]
                                     temp_right = line_l[0]
                                     temp_button = rect_l[2]
@@ -469,7 +468,7 @@ def distance_get(q_c, q_i, q_yi, q_ym, q_img, q_f, q_l, q_r, lock_ser, cap_id, f
                         for line_r in lines_right:
                             has_change = False
                             for rect_r in rectangles_right:
-                                if 0.0 < rect_r[0] - line_r[0] <= 25.0:
+                                if 0.0 < rect_r[0] - line_r[0] <= 100.0:
                                     temp_left = line_r[0]
                                     temp_right = rect_r[1]
                                     temp_button = rect_r[2]
@@ -1127,76 +1126,6 @@ def read_message(hex_rec):
     return is_normal, ret_list
 
 
-# 多步执行动作
-# def multi_action(hex_action, times_action, set_yaw, cmd_34, q_i, q_c, q_s, lock_ser, file_address):
-#     sensor_state = 0  # 传感器状态，99是传感器异常，98是无反馈，97是运行报错
-#     loop_nofeedback = 0  # 累加无反馈次数
-#     threshold_nofeedback = 10  # 累计无反馈上限值
-#     imu_yaw = 0.0
-#     imu_pitch = 0.0
-#     imu_roll = 0.0
-#
-#     for id_action in range(0, times_action, 1):
-#         no_feedback = True
-#         while no_feedback:
-#             try:
-#                 se.write(hex_action)
-#                 is_read, ret_list = read_message(hex_action)
-#                 if is_read:
-#                     q_c.put(ret_list)
-#                     q_c.get() if q_c.qsize() > 1 else time.sleep(0.001)
-#                 str_send = binascii.b2a_hex(hex_action).decode('utf-8')
-#                 str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-#                 file_rec = open(file_address + 'Control.txt', 'a')
-#                 file_rec.write(str_Time + ',multi,s,' + str_send + '\r\n')
-#                 file_rec.close()
-#                 # 获取偏航角
-#                 if not q_i.empty():
-#                     imu_list = q_i.get()
-#                     imu_yaw = imu_list[0]
-#                     imu_pitch = imu_list[1]
-#                     imu_roll = imu_list[2]
-#
-#                 cv2.waitKey(40)
-#                 hex_rec = se.readline()
-#                 if hex_rec:
-#                     # 收到反馈，跳出反馈循环
-#                     no_feedback = False
-#                     str_rec = binascii.b2a_hex(hex_rec).decode('utf-8')
-#                     file_rec = open(file_address + 'Control.txt', 'a')
-#                     file_rec.write(str_Time + ',multi,r,' + str_rec + '\r\n')
-#                     file_rec.close()
-#                     # is_read, ret_list = read_message(hex_rec)
-#                     # if is_read:
-#                     #     q_s.put(ret_list)
-#                     #     q_s.get() if q_s.qsize() > 1 else time.sleep(0.001)
-#                     # sensor_state = read_feedback(hex_rec, imu_yaw)
-#                     # if sensor_state != 0 and sensor_state != 5:
-#                     #     break
-#                     if abs(imu_yaw - set_yaw) > 5.0:
-#                         correct_yaw(imu_yaw, set_yaw, cmd_34, q_i, q_c, q_s, lock_ser, file_address)
-#                 else:
-#                     # 重新发送命令，并累计无反馈次数
-#                     loop_nofeedback += 1
-#                     print('无反馈', str(loop_nofeedback))
-#                     if loop_nofeedback >= threshold_nofeedback:
-#                         sensor_state = 98
-#                         no_feedback = False
-#                         break
-#             except Exception as e_sa:
-#                 print(e_sa)
-#                 print(f'error file:{e_sa.__traceback__.tb_frame.f_globals["__file__"]}')
-#                 print(f"error line:{e_sa.__traceback__.tb_lineno}")
-#                 sensor_state = 97
-#                 no_feedback = False
-#                 break
-#         if sensor_state != 0 and sensor_state != 5:
-#             break
-#     if sensor_state == 5:
-#         sensor_state = 0
-#     return sensor_state
-#
-#
 # 校正偏航角
 def correct_yaw(now_yaw, target_yaw, cmd_56, q_i, q_d, q_c, q_ci, file_address):
     global glo_is_init, rec_side_left, rec_side_right
@@ -1940,8 +1869,9 @@ def u_turn(cmd_56, q_i, q_c, q_ci, q_d, lock_ser, file_address):
 # 到边后“弓”型转向
 def z_turn(is_far, cmd_56, q_i, q_c, q_ci, q_d, q_l, lock_ser, file_address):
     get_state = 0
+    moveSpeed_zTurn = 40
     cmd_24_rotateSpeed = CVFunc.trans_speed('40')
-    cmd_24_moveSpeed = CVFunc.trans_speed('40')
+    cmd_24_moveSpeed = CVFunc.trans_speed(str(moveSpeed_zTurn))
     hex_turnRight = CVFunc.set_order(cmd_0_head + cmd_13_front + cmd_24_rotateSpeed + cmd_13_back + cmd_24_rotateSpeed + cmd_56)
     hex_turnLeft = CVFunc.set_order(cmd_0_head + cmd_13_back + cmd_24_rotateSpeed + cmd_13_front + cmd_24_rotateSpeed + cmd_56)
     hex_moveFront = CVFunc.set_order(cmd_0_head + cmd_13_front + cmd_24_moveSpeed + cmd_13_front + cmd_24_moveSpeed + cmd_56)
@@ -2008,14 +1938,42 @@ def z_turn(is_far, cmd_56, q_i, q_c, q_ci, q_d, q_l, lock_ser, file_address):
     if get_state > 90:
         return get_state
 
-    # 3.向前定次数移动。如果已到边界，直接退出并返回1
+    # 3.根据速度和光伏板宽度，向前定次数移动。如果已到边界，直接退出并返回1
     for i in range(0, 41, 1):
         if not q_l.empty():
             dis_laser = q_l.get()
             if dis_laser <= laser_threshold:
                 get_state = 1
                 return get_state
-        get_state = single_action(hex_moveFront, q_c, q_ci, file_address)
+        # 获取视觉
+        if not q_d.empty():
+            dis_list = q_d.get()
+            cam_yaw = dis_list[3]
+        else:
+            cv2.waitKey(50)
+            if not q_d.empty():
+                dis_list = q_d.get()
+                cam_yaw = dis_list[3]
+            else:
+                cam_yaw = 0.0
+        if wash_thre_yaw < abs(cam_yaw):
+            speed_left = moveSpeed_zTurn - int(round(cam_yaw, 0))
+            if speed_left < 0:
+                speed_left = 0
+            elif speed_left > 100:
+                speed_left = 100
+            cmd_2_corYaw = CVFunc.trans_speed(str(speed_left))
+            speed_right = moveSpeed_zTurn + int(round(cam_yaw, 0))
+            if speed_right < 0:
+                speed_right = 0
+            elif speed_right > 100:
+                speed_right = 100
+            cmd_4_corYaw = CVFunc.trans_speed(str(speed_right))
+            hex_moveFront_yaw = CVFunc.set_order(
+                cmd_0_head + cmd_13_front + cmd_2_corYaw + cmd_13_front + cmd_4_corYaw + cmd_56)
+            get_state = single_action(hex_moveFront_yaw, q_c, q_ci, file_address)
+        else:
+            get_state = single_action(hex_moveFront, q_c, q_ci, file_address)
         if keyboard.is_pressed('b'):  # 急停按钮，标识报错并跳出
             get_error = single_action(hex_allStop, q_c, q_ci, file_address)
             get_state = 96
@@ -2054,7 +2012,17 @@ def z_turn(is_far, cmd_56, q_i, q_c, q_ci, q_d, q_l, lock_ser, file_address):
     if cam_yaw != -999.9 or 0.0:
         now_yaw = cam_yaw
     else:
-        now_yaw = imu_yaw
+        cv2.waitKey(50)
+        if not q_d.empty():
+            dis_list = q_d.get()
+            cam_yaw = dis_list[3]
+        if not q_i.empty():
+            imu_list = q_i.get()
+            imu_yaw = -imu_list[2]
+        if cam_yaw != -999.9 or 0.0:
+            now_yaw = cam_yaw
+        else:
+            now_yaw = imu_yaw
     get_state = correct_yaw(now_yaw, 0.0, cmd_56, q_i, q_d, q_c, q_ci, file_address)
     if get_state > 90:
         return get_state
@@ -2065,8 +2033,9 @@ def z_turn(is_far, cmd_56, q_i, q_c, q_ci, q_d, q_l, lock_ser, file_address):
 # 到达终点后返回
 def end_back(cmd_56, q_i, q_c, q_ci, q_d, q_l, lock_ser, file_address):
     get_state = 0
+    moveSpeed_zTurn = 40
     cmd_24_rotateSpeed = CVFunc.trans_speed('40')
-    cmd_24_moveSpeed = CVFunc.trans_speed('40')
+    cmd_24_moveSpeed = CVFunc.trans_speed(str(moveSpeed_zTurn))
     hex_turnRight = CVFunc.set_order(cmd_0_head + cmd_13_front + cmd_24_rotateSpeed + cmd_13_back + cmd_24_rotateSpeed + cmd_56)
     hex_turnLeft = CVFunc.set_order(cmd_0_head + cmd_13_back + cmd_24_rotateSpeed + cmd_13_front + cmd_24_rotateSpeed + cmd_56)
     hex_moveFront = CVFunc.set_order(cmd_0_head + cmd_13_front + cmd_24_moveSpeed + cmd_13_front + cmd_24_moveSpeed + cmd_56)
@@ -2087,7 +2056,7 @@ def end_back(cmd_56, q_i, q_c, q_ci, q_d, q_l, lock_ser, file_address):
             get_error = single_action(hex_allStop, q_c, q_ci, file_address)
             return get_state
 
-    # 2.校准90度
+    # 2.校准180度
     if not q_d.empty():
         dis_list = q_d.get()
         cam_yaw = dis_list[3]
@@ -2107,6 +2076,10 @@ def end_back(cmd_56, q_i, q_c, q_ci, q_d, q_l, lock_ser, file_address):
         if cam_yaw != -999.9 or 0.0:
             now_yaw = cam_yaw
         else:
+            if imu_yaw > 135:
+                imu_yaw = imu_yaw - 180
+            elif imu_yaw < -135:
+                imu_yaw = 180 + imu_yaw
             now_yaw = imu_yaw
     get_state = correct_yaw(now_yaw, 0.0, cmd_56, q_i, q_d, q_c, q_ci, file_address)
     if keyboard.is_pressed('b'):  # 急停按钮，标识报错并跳出
@@ -2120,11 +2093,37 @@ def end_back(cmd_56, q_i, q_c, q_ci, q_d, q_l, lock_ser, file_address):
     while dis_laser > laser_threshold:
         if not q_l.empty():
             dis_laser = q_l.get()
-        get_state = single_action(hex_moveFront, q_c, q_ci, file_address)
+        if not q_d.empty():
+            dis_list = q_d.get()
+            cam_yaw = dis_list[3]
+        else:
+            cam_yaw = 0.0
+        if wash_thre_yaw < abs(cam_yaw):
+            speed_left = moveSpeed_zTurn - int(round(cam_yaw, 0))
+            if speed_left < 0:
+                speed_left = 0
+            elif speed_left > 100:
+                speed_left = 100
+            cmd_2_corYaw = CVFunc.trans_speed(str(speed_left))
+            speed_right = moveSpeed_zTurn + int(round(cam_yaw, 0))
+            if speed_right < 0:
+                speed_right = 0
+            elif speed_right > 100:
+                speed_right = 100
+            cmd_4_corYaw = CVFunc.trans_speed(str(speed_right))
+            hex_moveFront_yaw = CVFunc.set_order(
+                cmd_0_head + cmd_13_front + cmd_2_corYaw + cmd_13_front + cmd_4_corYaw + cmd_56)
+            get_state = single_action(hex_moveFront_yaw, q_c, q_ci, file_address)
+        else:
+            get_state = single_action(hex_moveFront, q_c, q_ci, file_address)
         if keyboard.is_pressed('b'):  # 急停按钮，标识报错并跳出
             get_error = single_action(hex_allStop, q_c, q_ci, file_address)
             get_state = 96
             return get_state
+        elif keyboard.is_pressed('e'):
+            get_error = single_action(hex_allStop, q_c, q_ci, file_address)
+            get_state = 1
+            break
         if get_state > 90:
             return get_state
         if not q_l.empty():
@@ -2340,7 +2339,7 @@ def autocontrol_run(q_i, q_d, q_c, q_ci, lock_ser, file_address, q_l):
             else:
                 now_yaw = imu_yaw
             # 偏航大于1.0就调整拉直
-            if abs(now_yaw) > 1.0:
+            if abs(now_yaw) > wash_thre_yaw:
                 print('偏航角度' + str(now_yaw))
                 get_state = correct_yaw(now_yaw, 0.0, cmd_56, q_i, q_d, q_c, q_ci, file_address)
                 # 无反馈退出
@@ -2362,7 +2361,7 @@ def autocontrol_run(q_i, q_d, q_c, q_ci, lock_ser, file_address, q_l):
 
             # 3.2. 如果距离轨迹有偏移，进行校正
             # 静止获取左右任意一边距离。如果同时获取到两边，则更新光伏板宽度。
-            for i in range(0, 6, 1):
+            for i in range(0, 3, 1):
                 if not q_d.empty():
                     dis_list = q_d.get()
                     side_f = dis_list[0]
@@ -2462,9 +2461,6 @@ def autocontrol_run(q_i, q_d, q_c, q_ci, lock_ser, file_address, q_l):
                 print('手动急停')
                 no_feedBack = True
                 break
-            elif get_state == 95:
-                print('偏移校正报错')
-                break
             elif get_state > 90:
                 print('故障')
                 no_feedBack = True
@@ -2472,21 +2468,21 @@ def autocontrol_run(q_i, q_d, q_c, q_ci, lock_ser, file_address, q_l):
             elif get_state == 1:
                 print('到边')
 
-            # 3.4.到达位置，调头
-            get_state = turn_around(cmd_56, q_i, q_c, q_ci, q_d, lock_ser, file_address)
-            if get_state == 98:
-                print('无反馈，结束运行')
-                no_feedBack = True
-                break
-            elif get_state == 96:
-                print('手动急停')
-                no_feedBack = True
-                break
-            elif get_state > 90:
-                print('故障')
-                no_feedBack = True
-                break
-            print('完成调头')
+            # # 3.4.到达位置，调头
+            # get_state = turn_around(cmd_56, q_i, q_c, q_ci, q_d, lock_ser, file_address)
+            # if get_state == 98:
+            #     print('无反馈，结束运行')
+            #     no_feedBack = True
+            #     break
+            # elif get_state == 96:
+            #     print('手动急停')
+            #     no_feedBack = True
+            #     break
+            # elif get_state > 90:
+            #     print('故障')
+            #     no_feedBack = True
+            #     break
+            # print('完成调头')
 
             # # 3.4 转90度，直行一段距离后再转90度
             # get_state = u_turn(cmd_56, q_i, q_c, q_ci, q_d, lock_ser, file_address)
@@ -2504,48 +2500,48 @@ def autocontrol_run(q_i, q_d, q_c, q_ci, lock_ser, file_address, q_l):
             #     break
             # print('完成调头')
 
-            # # 3.4 根据循环次数判断左移还是右移
-            # if loop_num % 2 == 0:
-            #     get_state = z_turn(True, cmd_56, q_i, q_c, q_ci, q_d, q_l, lock_ser, file_address)
-            # else:
-            #     get_state = z_turn(False, cmd_56, q_i, q_c, q_ci, q_d, q_l, lock_ser, file_address)
-            # if get_state == 98:
-            #     print('无反馈，结束运行')
-            #     no_feedBack = True
-            #     break
-            # elif get_state == 96:
-            #     print('手动急停')
-            #     no_feedBack = True
-            #     break
-            # elif get_state > 90:
-            #     print('故障')
-            #     no_feedBack = True
-            #     break
-            # elif get_state == 1:
-            #     need_back = True
-            #
-            # # 3.5 左右设定距离对调
-            # temp_lr = wash_right_dis
-            # wash_right_dis = wash_left_dis
-            # wash_left_dis = temp_lr
-            # # print('完成调头')
-            #
-            # # 3.6 如果到尽头，调头返回
-            # if need_back:
-            #     print('完成清洗，返回')
-            #     get_state = end_back(cmd_56, q_i, q_c, q_ci, q_d, q_l, lock_ser, file_address)
-            #     if get_state == 98:
-            #         print('无反馈，结束运行')
-            #         no_feedBack = True
-            #         break
-            #     elif get_state == 96:
-            #         print('手动急停')
-            #         no_feedBack = True
-            #         break
-            #     elif get_state > 90:
-            #         print('故障')
-            #         no_feedBack = True
-            #         break
+            # 3.4 根据循环次数判断左移还是右移
+            if loop_num % 2 == 0:
+                get_state = z_turn(True, cmd_56, q_i, q_c, q_ci, q_d, q_l, lock_ser, file_address)
+            else:
+                get_state = z_turn(False, cmd_56, q_i, q_c, q_ci, q_d, q_l, lock_ser, file_address)
+            if get_state == 98:
+                print('无反馈，结束运行')
+                no_feedBack = True
+                break
+            elif get_state == 96:
+                print('手动急停')
+                no_feedBack = True
+                break
+            elif get_state > 90:
+                print('故障')
+                no_feedBack = True
+                break
+            elif get_state == 1:
+                need_back = True
+
+            # 3.5 左右设定距离对调
+            temp_lr = wash_right_dis
+            wash_right_dis = wash_left_dis
+            wash_left_dis = temp_lr
+            # print('完成调头')
+
+            # 3.6 如果到尽头，调头返回
+            if need_back:
+                print('完成清洗，返回')
+                get_state = end_back(cmd_56, q_i, q_c, q_ci, q_d, q_l, lock_ser, file_address)
+                if get_state == 98:
+                    print('无反馈，结束运行')
+                    no_feedBack = True
+                    break
+                elif get_state == 96:
+                    print('手动急停')
+                    no_feedBack = True
+                    break
+                elif get_state > 90:
+                    print('故障')
+                    no_feedBack = True
+                    break
 
             if loop_time != -1:
                 print('循环剩余' + str(loop_time - loop_num))

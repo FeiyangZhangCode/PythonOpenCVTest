@@ -82,7 +82,7 @@ def draw_rectangles(is_ver, rectangles_list, rgb_draw, rect_threshold, yaw_avg, 
 
 
 # 读取模型参数
-file_model = open('./Model-360.txt', 'r', encoding='utf-8')
+file_model = open('LingGuang/Model-360.txt', 'r', encoding='utf-8')
 para_lines = file_model.readlines()
 file_model.close()
 
@@ -162,7 +162,7 @@ start_time = time.time()
 #     continue
 # rgb_frame = cv2.imread('./TestData/20221206-1655/C0-165523-932253.jpg')
 
-str_fileHome = './TestData/20221206-1655/'
+str_fileHome = './TestData/20221208-1603/'
 title_li = os.listdir(str_fileHome)
 for title in title_li:
     rgb_frame = cv2.imread(str_fileHome + title)
