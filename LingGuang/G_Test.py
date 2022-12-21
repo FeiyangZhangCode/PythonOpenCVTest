@@ -82,7 +82,7 @@ def draw_rectangles(is_ver, rectangles_list, rgb_draw, rect_threshold, yaw_avg, 
 
 
 # 读取模型参数
-file_model = open('LingGuang/Model-360.txt', 'r', encoding='utf-8')
+file_model = open('Model-360.txt', 'r', encoding='utf-8')
 para_lines = file_model.readlines()
 file_model.close()
 

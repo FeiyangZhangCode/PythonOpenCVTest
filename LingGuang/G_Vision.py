@@ -10,14 +10,9 @@ import multiprocessing as mp
 import os
 
 
-# 调用相机获取图片进行测距
-def distance_get(c_id, q_v2a, q_yi, lock_ser, file_address, q_v2s):
-    # 机身尺寸、光伏板尺寸
-    vehicle_left = 118
-    vehicle_right = 127
-    vehicle_front = 117
-    vehicle_width = vehicle_left + vehicle_right
 
+# 抓取图片，确认视频流的读入
+def image_put(q, c_id):
     cap = cv2.VideoCapture(c_id)
     cap.set(6, 1196444237)
     cap.set(3, 640)
@@ -33,8 +28,29 @@ def distance_get(c_id, q_v2a, q_yi, lock_ser, file_address, q_v2s):
         cap.set(5, 30)
         print('Get2', c_id)
 
+    while cap.isOpened():
+        ret, frame = cap.read()
+        # 抓取图片不成功再重新抓取
+        if not ret:
+            cap = cv2.VideoCapture(c_id)
+            print('Get3', c_id)
+            ret, frame = cap.read()
+        q.put(frame)
+        # print('q.qsize():', q.qsize())
+        q.get() if q.qsize() > 1 else time.sleep(0.01)
+
+
+
+# 调用相机获取图片进行测距
+def distance_get(q_cap, c_id, q_v2a, q_yi, lock_ser, file_address, q_v2s):
+    # 机身尺寸、光伏板尺寸
+    vehicle_left = 118
+    vehicle_right = 127
+    vehicle_front = 117
+    vehicle_width = vehicle_left + vehicle_right
+
     # 读取模型参数
-    file_model = open('./Model-360.txt', 'r', encoding='utf-8')
+    file_model = open('../Model-360.txt', 'r', encoding='utf-8')
     para_lines = file_model.readlines()
     file_model.close()
     model_F = float(para_lines[0].strip('\n'))
@@ -56,12 +72,12 @@ def distance_get(c_id, q_v2a, q_yi, lock_ser, file_address, q_v2s):
         ret_mess = ''  # 数据信息
         time_mess = ''  # 时间信息
         # 获取图像及参数
-        ret, rgb_frame = cap.read()
-        # 抓取图片不成功再重新抓取
-        if not ret:
-            cap = cv2.VideoCapture(c_id)
-            print('Get3', c_id)
-            ret, rgb_frame = cap.read()
+        start_time = time.time()
+        if not q_cap.empty():
+            rgb_frame = q_cap.get()
+            loop_num += 1
+        else:
+            continue
         img_height = int(rgb_frame.shape[0])
         img_width = int(rgb_frame.shape[1])
         mid_height = int(img_height / 2)
@@ -527,13 +543,13 @@ def distance_get(c_id, q_v2a, q_yi, lock_ser, file_address, q_v2s):
             print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
             print(f"error line:{e.__traceback__.tb_lineno}")
         finally:
-            # pass
+            pass
             # print(yaw_avg)
             # cv2.imshow('canny', gra_canny)
             # cv2.imshow('thre', gra_threshold)
             # cv2.imshow('Hough', gra_hough)
-            cv2.imshow('ShowImg', rgb_show)
-            cv2.waitKey(1)
+            # cv2.imshow('ShowRect', rgb_show)
+            # cv2.waitKey(1)
         # 保存txt，传输数据
         start_time = time.time()
         send_list = [yaw_avg, side_left, side_right]

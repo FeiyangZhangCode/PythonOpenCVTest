@@ -1,34 +1,30 @@
-import multiprocessing
 import numpy as np
-import CVFunc
 import signal
 import math
-import xlwt
 import binascii
 import serial
 import time
 import cv2
-import crcmod
-import keyboard
 import datetime
 import multiprocessing as mp
 import os
 import JY61
 import G_Vision
 import G_Action
+import G_RGBD
 
 
 # 相机编号、IMU串口信息、主板串口通信
 camera_id = 0
-imu_com = 'COM17'
+imu_com = '/dev/ttyTHS1'
 imu_baud = 9600
 imu_timeout = 0.05
-laser_com = 'COM14'
+laser_com = '/dev/ttyUSB1'
 laser_baud = 115200
 laser_timeout = 0.005
-machine_com = 'COM16'
+machine_com = '/dev/ttyUSB0'
 machine_baud = 115200
-machine_timeout = 0.1
+machine_timeout = 0.15
 # se = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.1)
 
 # 机身尺寸、光伏板尺寸
@@ -43,8 +39,9 @@ laser_threshold = 17
 
 
 # 读取IMU数据
-def imu_get(q_ia, q_iv, q_is, q_y, q_c, lock_ser, file_address):
-    cv2.waitKey(500)
+def imu_get(q_iv, q_im, q_y, q_c, lock_ser, file_address):
+    # cv2.waitKey(500)
+    time.sleep(0.5)
     se_i = serial.Serial(imu_com, imu_baud, timeout=imu_timeout)
     # 释放串口积攒的数据
     se_i.flushInput()
@@ -69,10 +66,8 @@ def imu_get(q_ia, q_iv, q_is, q_y, q_c, lock_ser, file_address):
                         send_list = [round(jy_list[6], 2), round(jy_list[7], 2), round(jy_list[8], 2)]
                         q_iv.put(send_list)
                         q_iv.get() if q_iv.qsize() > 1 else time.sleep(0.005)
-                        q_is.put(send_list)
-                        q_is.get() if q_is.qsize() > 1 else time.sleep(0.005)
-                        q_ia.put(send_list)
-                        q_ia.get() if q_ia.qsize() > 1 else time.sleep(0.005)
+                        q_im.put(send_list)
+                        q_im.get() if q_im.qsize() > 1 else time.sleep(0.005)
                     else:
                         sav_mess = ('NoneType;' + str_imu + ';\n')
                         print(sav_mess)
@@ -91,7 +86,8 @@ def imu_get(q_ia, q_iv, q_is, q_y, q_c, lock_ser, file_address):
                     str_zero = 'ff aa 52'
                     hex_zero = bytes.fromhex(str_zero)
                     se_i.write(hex_zero)
-                    cv2.waitKey(50)
+                    # cv2.waitKey(50)
+                    time.sleep(0.05)
 
         except Exception as e:
             print(e)
@@ -100,7 +96,7 @@ def imu_get(q_ia, q_iv, q_is, q_y, q_c, lock_ser, file_address):
 
 
 # 读取激光测距数据
-def laser_get(q_la, q_lm, file_address):
+def laser_get(q_lm, file_address):
     se_l = serial.Serial(laser_com, laser_baud, timeout=laser_timeout)
     # 释放串口积攒的数据
     se_l.flushInput()
@@ -121,8 +117,6 @@ def laser_get(q_la, q_lm, file_address):
                     laser_F = hex_f_h << 8 | hex_f_l
                     laser_S = hex_s_h << 8 | hex_s_l
                     # print(str(laser_F), str(laser_S))
-                    q_la.put(laser_F)
-                    q_la.get() if q_la.qsize() > 1 else time.sleep(0.005)
                     q_lm.put(laser_F)
                     q_lm.get() if q_lm.qsize() > 1 else time.sleep(0.005)
                 else:
@@ -139,8 +133,9 @@ def laser_get(q_la, q_lm, file_address):
 
 # 融合前后单目、超声和IMU，快速更新四向和偏航角
 def multi_calc(q_v2s, q_cs, q_m2s, file_address):
-    cv2.waitKey(1000)
-    print('calc start')
+    # cv2.waitKey(1000)
+    # time.sleep(5)
+
     # 根据相机编号分配模型参数
 
     imu_yaw = 0.0
@@ -171,19 +166,10 @@ def multi_calc(q_v2s, q_cs, q_m2s, file_address):
             break
         else:
             print('No Image')
-            cv2.waitKey(500)
-
+            # cv2.waitKey(1000)
+            time.sleep(5)
+    print('calc start')
     while True:
-        str_Time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-
-        # 发往主板的控制命令
-        if not q_cs.empty():
-            ac_ctl = q_cs.get()
-
-        # 接收视觉数据
-        if not q_v2s.empty():
-            cam_yaw, side_left, side_right = q_v2s.get()
-
         # 机器定时循环
         if not q_m2s.empty():
             end_time = time.time()
@@ -202,6 +188,14 @@ def multi_calc(q_v2s, q_cs, q_m2s, file_address):
                 imu_roll = sensor_list[2]
                 imu_pitch = sensor_list[3]
                 imu_yaw = sensor_list[4]
+
+            # 发往主板的控制命令
+            if not q_cs.empty():
+                ac_ctl = q_cs.get()
+
+            # 接收视觉数据
+            if not q_v2s.empty():
+                cam_yaw, side_left, side_right = q_v2s.get()
 
             # 右上的距离展示区
             # 左右边界
@@ -256,7 +250,7 @@ def multi_calc(q_v2s, q_cs, q_m2s, file_address):
             rgb_show_data = np.zeros((show_height, show_width, 3), np.uint8)
             str_0 = 'Timer:' + str(time_mess)
             if cam_yaw != -999.9:
-                str_0 += '  Y:' + str(cam_yaw)
+                str_0 += '  Y:' + str(round(cam_yaw, 2))
             else:
                 str_0 += '  Y:N/A'
             if dis_laser != -999.9:
@@ -326,7 +320,7 @@ def multi_calc(q_v2s, q_cs, q_m2s, file_address):
             rgb_mix[0:show_height, 0:show_width] = rgb_show_line
             rgb_mix[0:show_height, show_width:(show_width * 2)] = rgb_show_data
             cv2.imshow('ShowData', rgb_mix)
-
+            cv2.waitKey(1)
             # cv2.imwrite(file_address + 'C' + str_Time + '.jpg', rgb_show_0)
             # cv2.imwrite(file_address + 'M' + str_Time + '.jpg', rgb_mix)
 
@@ -334,8 +328,6 @@ def multi_calc(q_v2s, q_cs, q_m2s, file_address):
             time_mess_calc = round((end_time_calc - start_time_calc) * 1000, 0)
 
             start_time = time.time()
-
-        cv2.waitKey(1)
 
 
 def quit_all():
@@ -376,57 +368,55 @@ def read_message(hex_rec):
 
 
 # 主板通信交互
-def machine_communication(q_a2m, q_m2a, q_i, q_l):
-    se_m = serial.Serial(machine_com, machine_baud, machine_timeout)
-    hex_send = bytes.fromhex('aa 01 00 00 00 00 00 00 b0')
+def machine_communication(q_a2m, q_m2a, q_m2s, q_i, q_l):
+    print('Communication Start')
+    se_m = serial.Serial(machine_com, machine_baud, timeout=machine_timeout)
     loop_nofeedback = 0  # 累加无反馈次数
     threshold_nofeedback = 10  # 累计无反馈上限值
-    has_feedback = True
-
     imu_roll = 0.0
     imu_pitch = 0.0
     imu_yaw = 0.0
-
-    dis_laser = -999.9
+    dis_laser = 999.9
 
     while True:
+        ret_list = [99]
         try:
-            if has_feedback:
+            if not q_a2m.empty():
+                hex_send = q_a2m.get()
+            else:
+                # cv2.waitKey(30)
+                time.sleep(0.03)
                 if not q_a2m.empty():
                     hex_send = q_a2m.get()
                 else:
-                    cv2.waitKey(30)
-                    if not q_a2m.empty():
-                        hex_send = q_a2m.get()
-                    else:
-                        hex_send = bytes.fromhex('aa 01 00 00 00 00 00 00 b0')
-            se_m.write(hex_send)
-            if not q_i.empty():
-                imu_list = q_i.get()
-                imu_roll = imu_list[0]
-                imu_pitch = imu_list[1]
-                imu_yaw = -imu_list[2]
-            if not q_l.empty():
-                dis_laser = q_l.get()
-            cv2.waitKey(50)
-            hex_receive = se_m.readline()
-            if hex_receive:
-                # 收到反馈，跳出反馈循环
-                has_feedback = True
-                str_rec = binascii.b2a_hex(hex_receive).decode('utf-8')
-                if len(str_rec) >= 12:
-                    if str_rec[0:4] == 'aa02':
-                        is_normal, ret_list = read_message(hex_receive)
-                    else:
-                        ret_list = [99]
-                        print('头部异常', str_rec)
-                else:
-                    ret_list = [99]
-                    print('长度异常', str_rec)
-                # file_rec = open(str_fileAddress, 'a')
-                # file_rec.write(str_Time + ',single,r,' + str_rec + '\r\n')
-                # file_rec.close()
-
+                    # print('Receive Action Error')
+                    hex_send = bytes.fromhex('aa 01 00 00 00 00 00 00 b0')
+            is_normal, ret_list = read_message(hex_send)
+            if is_normal:
+                str_send_msg = ''
+                if ret_list[0] == ret_list[2] == 1:
+                    str_send_msg += 'Front'
+                    if ret_list[1] == ret_list[3]:
+                        str_send_msg += 'Straight'
+                    elif ret_list[1] > ret_list[3]:
+                        str_send_msg += 'Right'
+                    elif ret_list[1] < ret_list[3]:
+                        str_send_msg += 'Left'
+                elif ret_list[0] == ret_list[2] == 2:
+                    str_send_msg += 'Back'
+                elif ret_list[0] == 1 and ret_list[2] == 2:
+                    str_send_msg += 'RotateRight'
+                elif ret_list[0] == 2 and ret_list[2] == 1:
+                    str_send_msg += 'RotateLeft'
+                # if len(str_send_msg) > 1:
+                    # print(str_send_msg)
+            else:
+                print('Action Message Error')
+            no_feedback = True
+            while no_feedback:
+                se_m.write(hex_send)
+                # cv2.waitKey(50)
+                time.sleep(0.05)
                 if not q_i.empty():
                     imu_list = q_i.get()
                     imu_roll = imu_list[0]
@@ -434,27 +424,42 @@ def machine_communication(q_a2m, q_m2a, q_i, q_l):
                     imu_yaw = -imu_list[2]
                 if not q_l.empty():
                     dis_laser = q_l.get()
-
-                ret_list.append(dis_laser)
-                ret_list.append(imu_roll)
-                ret_list.append(imu_pitch)
-                ret_list.append(imu_yaw)
-            else:
-                # 重新发送命令，并累计无反馈次数。到达阈值后
-                loop_nofeedback += 1
-                print('无反馈', str(loop_nofeedback))
-                if loop_nofeedback >= threshold_nofeedback:
-                    ret_list = [98]
-                    hex_send = bytes.fromhex('aa 01 00 00 00 00 00 00 b0')
-                    has_feedback = False
+                hex_receive = se_m.readline()
+                if hex_receive:
+                    # 收到反馈，跳出反馈循环
+                    no_feedback = False
+                    str_rec = binascii.b2a_hex(hex_receive).decode('utf-8')
+                    if len(str_rec) >= 12:
+                        if str_rec[0:4] == 'aa02':
+                            is_normal, ret_list = read_message(hex_receive)
+                        else:
+                            ret_list = [99]
+                            print('头部异常', str_rec)
+                    else:
+                        ret_list = [99]
+                        print('长度异常', str_rec)
                 else:
-                    ret_list = [99]
-            q_m2a.put(ret_list)
-            q_m2a.get() if q_m2a.qsize() > 1 else time.sleep(0.001)
+                    # 重新发送命令，并累计无反馈次数。到达阈值后报错退出
+                    loop_nofeedback += 1
+                    if loop_nofeedback >= threshold_nofeedback:
+                        print('无反馈')
+                        ret_list = [98]
+                        no_feedback = False
         except Exception as e:
+            print('******   Machine Communication Error   ******')
             print(e)
             print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
             print(f"error line:{e.__traceback__.tb_lineno}")
+            print('******   Error Message End   ******')
+        finally:
+            ret_list.append(dis_laser)
+            ret_list.append(imu_roll)
+            ret_list.append(imu_pitch)
+            ret_list.append(imu_yaw)
+            q_m2a.put(ret_list)
+            q_m2a.get() if q_m2a.qsize() > 1 else time.sleep(0.001)
+            q_m2s.put(ret_list)
+            q_m2s.get() if q_m2s.qsize() > 1 else time.sleep(0.001)
 
 
 if __name__ == '__main__':
@@ -471,14 +476,16 @@ if __name__ == '__main__':
     processes = []
     lock = mp.Lock()
     # 单目相机测距，视觉数据给自动控制和展示，视觉偏航角给imu
+    queue_capture = mp.Queue(maxsize=2)
     queue_vision2action = mp.Queue(maxsize=2)
     queue_yaw_imu = mp.Queue(maxsize=2)
     queue_vision2show = mp.Queue(maxsize=2)
 
-    # 自动控制交互，控制hex给机器，控制命令给展示和imu
+    # 自动控制交互，控制hex给机器，控制命令给展示和imu，接收键盘输入
     queue_action2machine = mp.Queue(maxsize=2)
     queue_control_show = mp.Queue(maxsize=2)
     queue_control_imu = mp.Queue(maxsize=2)
+    queue_keyboard = mp.Queue(maxsize=2)
 
     # 机器通信交互，反馈数据给自动控制
     queue_machine2action = mp.Queue(maxsize=2)
@@ -490,29 +497,34 @@ if __name__ == '__main__':
     queue_imu_vision = mp.Queue(maxsize=2)
     queue_imu_machine = mp.Queue(maxsize=2)
 
-    # 单目视觉测距，获取+测距
-    processes.append(
-        mp.Process(target=G_Vision.distance_get, args=(
-            camera_id, queue_vision2action, queue_yaw_imu, lock, str_fileAddress, queue_vision2show)))
+    # # 单目视觉测距，获取+测距
+    # processes.append(mp.Process(target=G_Vision.image_put, args=(queue_capture, camera_id)))
+    # processes.append(
+    #     mp.Process(target=G_Vision.distance_get, args=(
+    #         queue_capture, camera_id, queue_vision2action, queue_yaw_imu, lock, str_fileAddress, queue_vision2show)))
+
+    # 深度相机测距
+    processes.append(mp.Process(target=G_RGBD.distance_get, args=(queue_vision2action, queue_yaw_imu, queue_vision2show)))
+
     # 自动运行导航
     processes.append(
         mp.Process(target=G_Action.autocontrol_run, args=(
-            queue_vision2action, queue_machine2action, queue_action2machine, queue_control_show, queue_control_imu, lock, str_fileAddress)))
+            queue_vision2action, queue_machine2action, queue_action2machine, queue_control_show, queue_control_imu, lock, str_fileAddress, queue_keyboard)))
+
 
     # 对接机器主板
-    processes.append(mp.Process(target=machine_communication, args=(queue_action2machine, queue_machine2action, queue_imu_machine, queue_laser_machine)))
+    processes.append(mp.Process(target=machine_communication, args=(queue_action2machine, queue_machine2action, queue_machine2show, queue_imu_machine, queue_laser_machine)))
 
 
     # 视觉感知融合
     processes.append(mp.Process(target=multi_calc, args=(
             queue_vision2show, queue_control_show, queue_machine2show, str_fileAddress)))
     # 激光测距
-    processes.append(mp.Process(target=laser_get, args=(queue_laser_machine, str_fileAddress)))
+    processes.append(mp.Process(target=laser_get, args=( queue_laser_machine, str_fileAddress)))
     # IMU
     processes.append(
         mp.Process(target=imu_get, args=(
             queue_imu_vision, queue_imu_machine, queue_yaw_imu, queue_control_imu, lock, str_fileAddress)))
-
 
     for process in processes:
         process.daemon = True
