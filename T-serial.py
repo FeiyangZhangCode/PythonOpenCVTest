@@ -55,20 +55,21 @@ def serial_write():
 
 
 def serial_read():
-    se1 = serial.Serial('/dev/ttyS3', 9600, timeout=1)
+    se1 = serial.Serial('/dev/ttyTHS1', 115200, timeout=0.5)
     print('Read Ready')
     while True:
-        time.sleep(1)
+        # time.sleep(1)
         line = se1.readline()
         if line:
             # se1.write('Get\r\n'.encode())
             print(line)
             # print(line[0], line[1])
+            se1.write(line)
 
 
 if __name__ == '__main__':
     print('Start')
-    serial_write()
+    # serial_write()
     serial_read()
     # serial_rw()
     # auto_answer()
