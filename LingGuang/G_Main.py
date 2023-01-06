@@ -1,45 +1,382 @@
-import numpy as np
 import signal
-import math
 import binascii
 import serial
 import time
 import cv2
-import datetime
 import multiprocessing as mp
 import os
 import JY61
-import G_Vision
 import G_Action
 import G_RGBD
+import threading
+import queue
+import datetime
+import numpy as np
 
 
-# 相机编号、IMU串口信息、主板串口通信
-camera_id = 0
-imu_com = '/dev/ttyTHS1'
+# IMU串口信息、主板串口通信
+imu_com = '/dev/ttyUSB0'
 imu_baud = 9600
 imu_timeout = 0.05
-laser_com = '/dev/ttyUSB1'
-laser_baud = 115200
-laser_timeout = 0.005
-machine_com = '/dev/ttyUSB0'
-machine_baud = 115200
-machine_timeout = 0.15
-# se = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.1)
 
-# 机身尺寸、光伏板尺寸
-vehicle_left = 118
-vehicle_right = 127
-vehicle_front = 117
-vehicle_width = vehicle_left + vehicle_right
-panel_width = 630
+com_id = '/dev/ttyTHS1'
+com_bit_rate = 115200
+com_time_out = 0.1
 
-# 激光测距阈值
-laser_threshold = 17
+ATTR_STATE_RSSI = (1 << 5 | 0)  # 信号强度
+ATTR_STATE_UPDOWN_LOAD = (1 << 5 | 1)  # 提升负荷
+ATTR_STATE_WATER = (1 << 5 | 2)  # 液位
+ATTR_STATE_BATTERY = (1 << 5 | 3)  # 电量
+ATTR_STATE_DIR_U = (1 << 5 | 4)  # 转向上
+ATTR_STATE_DIR_D = (1 << 5 | 5)  # 转向下
+ATTR_STATE_DISTANCE_U = (1 << 5 | 6)  # 测距上
+ATTR_STATE_DISTANCE_D = (1 << 5 | 7)  # 测试下
+ATTR_STATE_DISTANCE_L = (1 << 5 | 8)  # 测距左
+ATTR_STATE_DISTANCE_R = (1 << 5 | 9)  # 测距右
+ATTR_STATE_NTC = (1 << 5 | 10)  # NTC温度
+ATTR_STATE_TOUCH = (1 << 5 | 11)  # 防跌落状态 STATE_ON: 至少有一个防跌落触发
+ATTR_STATE_TIME_ONCE = (1 << 5 | 12)  # 本次工作时长
+ATTR_STATE_TIME_SUM = (1 << 5 | 13)  # 累计工作时长
+
+ATTR_CONTROL_MODE = (2 << 5 | 0)  # 运行模式
+ATTR_CONTROL_BOOST_STATE = (2 << 5 | 1)  # 推进使能
+ATTR_CONTROL_BOOST_VALUE = (2 << 5 | 2)  # 推进力度
+ATTR_CONTROL_ADHESION = (2 << 5 | 3)  # 吸附
+ATTR_CONTROL_UPDOWN = (2 << 5 | 4)  # 上下行
+ATTR_CONTROL_DIR = (2 << 5 | 5)  # 转向
+ATTR_CONTROL_CLEAN = (2 << 5 | 6)  # 清洗系统
+ATTR_CONTROL_WATER = (2 << 5 | 7)  # 水循环系统
+ATTR_CONTROL_AUTO_TYPE = (2 << 5 | 8)  # 自动类型
+ATTR_CONTROL_MOVE_PATH = (2 << 5 | 9)  # 贴墙距离
+ATTR_CONTROL_WATER_RECYCLE = (2 << 5 | 10)  # 水回收
+ATTR_CONTROL_WATER_HEAT = (2 << 5 | 11)  # 水加热
+ATTR_CONTROL_CATERPILLA_LEFT = (2 << 5 | 12)  # 左履带
+ATTR_CONTROL_CATERPILLA_RIGHT = (2 << 5 | 13)  # 右履带
+
+ATTR_CONFIG_ADDR = (3 << 5 | 0)  # 设备地址
+ATTR_CONFIG_UD_RESTART = (3 << 5 | 1)  # 提升重启
+ATTR_CONFIG_OBSTACLE = (3 << 5 | 2)  # 避障距离
+
+ATTR_SPEED_UP = (4 << 5 | 0)  # 速度 - 上行
+ATTR_SPEED_DOWN = (4 << 5 | 1)  # 速度 - 下行
+ATTR_SPEED_ADHESION = (4 << 5 | 2)  # 速度 - 吸附
+ATTR_SPEED_STEAM = (4 << 5 | 3)  # 速度 - 水汽
+ATTR_SPEED_CLEAN = (4 << 5 | 4)  # 速度 - 清洗
+ATTR_SPEED_U_SPRAY1 = (4 << 5 | 5)  # 速度 - 上行喷水1
+ATTR_SPEED_U_SPRAY2 = (4 << 5 | 6)  # 速度 - 上行喷水2
+ATTR_SPEED_D_SPRAY1 = (4 << 5 | 7)  # 速度 - 下行喷水1
+ATTR_SPEED_D_SPRAY2 = (4 << 5 | 8)  # 速度 - 下行喷水2
+
+# 分开两个字节的消息
+V_BASIC = [
+    ATTR_STATE_RSSI,  # 信号强度
+    ATTR_STATE_WATER,  # 液位
+    ATTR_STATE_BATTERY,  # 电量
+    ATTR_STATE_DIR_U,  # 转向上
+    ATTR_STATE_DIR_D,  # 转向下
+    ATTR_STATE_NTC,  # NTC温度
+    ATTR_STATE_TOUCH,  # 防跌落状态 STATE_ON: 至少有一个防跌落触发
+
+    ATTR_SPEED_UP,  # 速度 - 上行
+    ATTR_SPEED_DOWN,  # 速度 - 下行
+    ATTR_SPEED_ADHESION,  # 速度 - 吸附
+    ATTR_SPEED_STEAM,  # 速度 - 水汽
+    ATTR_SPEED_CLEAN,  # 速度 - 清洗
+    ATTR_SPEED_U_SPRAY1,  # 速度 - 上行喷水1
+    ATTR_SPEED_U_SPRAY2,  # 速度 - 上行喷水2
+    ATTR_SPEED_D_SPRAY1,  # 速度 - 下行喷水1
+    ATTR_SPEED_D_SPRAY2,  # 速度 - 下行喷水2
+
+    ATTR_CONTROL_ADHESION,  # 吸附
+    ATTR_CONTROL_CLEAN,  # 清洗系统
+    ATTR_CONTROL_WATER,  # 水循环系统
+    ATTR_CONTROL_CATERPILLA_LEFT,  # 左履带
+    ATTR_CONTROL_CATERPILLA_RIGHT,  # 右履带
+]
+
+# 2字节组成u16的消息
+V_VALUE = [
+    ATTR_STATE_UPDOWN_LOAD,  # 提升负荷
+    ATTR_STATE_DISTANCE_U,  # 测距上
+    ATTR_STATE_DISTANCE_D,  # 测试下
+    ATTR_STATE_DISTANCE_L,  # 测距左
+    ATTR_STATE_DISTANCE_R,  # 测距右
+    ATTR_STATE_TIME_ONCE,  # 本次工作时长
+    ATTR_STATE_TIME_SUM,  # 累计工作时长
+]
+
+
+# 数据CRC8校验
+def xdata_CRC8(data):
+    crc8 = data[0]
+    for i in range(1, len(data), 1):
+        crc8 = crc8 ^ data[i]
+    return crc8
+
+
+# 串口发送命令，自动计算长度，并添加crc。 然后接收并返回响应
+def com_send_and_recv_resp(ser, msg,resp_len):
+    # 计算并填充长度
+    length = len(msg) + 1
+    msg[3] = length
+
+    # 计算并添加crc8
+    crc8 = xdata_CRC8(msg)
+    msg.append(crc8)
+
+    # 发送命令
+    ret = ser.write(msg)
+    # 判断长度
+    if ret != len(msg):
+        print("com_send len error")
+        return None, -1
+
+    # 读取信息
+    if resp_len==0:
+        hex_receive = ser.read(length)
+    elif resp_len>0:
+        hex_receive = ser.read(resp_len)
+    else:
+        hex_receive = ser.readline()
+    # 判断长度
+    if len(hex_receive) <= 5:
+        print("com recv too short：%d" % (len(hex_receive)))
+        return None, -2
+    elif hex_receive[3] != len(hex_receive):
+        print("com recv len error")
+        return None, -3
+
+    # 头判断
+    if hex_receive[0] != 0xaa:
+        print("com recv head[0] error:%d" % (hex_receive[0]))
+        return None, -4
+
+    # 比较CRC
+    crc_cal = xdata_CRC8(hex_receive[:-1])
+    crc_rec = hex_receive[-1]
+    if crc_cal != crc_rec:
+        print("com recv crc error")
+        return None, -5
+
+    return hex_receive, 0
+
+
+# 握手函数，成功接收到握手信息才返回
+def HandShake(ser):
+    # 握手的头及消息
+    head = [0xaa, 0x0f, 0xff, 0]
+    msg = "0:1.0#1:2.0#2:#3:#4:#5:#6:#"
+
+    # 转为askii码
+    msg_values = [ord(character) for character in msg]
+
+    # 合并消息
+    shake = head + msg_values
+
+    # 发送收握手信息, 返回响应
+    hex_receive, status = com_send_and_recv_resp(ser, shake,-1)
+
+    # 判断状态
+    if status != 0:
+        print("hangshake error=%d" % (status))
+        return status
+
+    # 头判断
+    if hex_receive[1] != 0xff:
+        print("hangshake recv head[1] error")
+        return -4
+
+    # 截取其中的字符串
+    str_receive = str(hex_receive[4:-2])
+    print("handshake ok:", str_receive)
+    # spl = str_receive.split('#')
+    # print(spl)
+    return 0
+
+
+# 解析接收到的消息
+def para_msg(msg):
+    ret = []
+    l = len(msg)
+    for i in range(0, l, 3):
+        cmd = msg[i]
+        bh = msg[i + 1]
+        bl = msg[i + 2]
+        if cmd in V_BASIC:
+            ret.append([cmd, bh, bl])
+        elif cmd in V_VALUE:
+            ret.append([cmd, (bh << 8 | bl)])
+        else:
+            print("unknow cmd:%d" % (cmd))
+
+    return ret
+
+
+# 解析控制响应消息的错误码
+def para_set_resp(msg):
+    ret = []
+    l = len(msg)
+    for i in range(0, l, 3):
+        cmd = msg[i]
+        bh = msg[i + 1]
+        bl = msg[i + 2]
+
+        if bh!=0 or bl!=0:
+            error = [cmd, hex(bh << 8 | bl)]
+            ret.append(error)
+            print("ctl error:",error)
+    return ret
+
+
+# 获取状态
+def get_status(ser):
+    # 握手的头及消息
+    head = [0xaa, 0x01, 0x1, 0]
+    msg = [ATTR_STATE_WATER, 0, 0, ATTR_STATE_BATTERY, 0, 0, ATTR_STATE_DISTANCE_U, 0, 0, ATTR_STATE_DISTANCE_D, 0, 0,
+           ATTR_STATE_TOUCH, 0, 0]
+
+    # 合并消息
+    msg = head + msg
+
+    # 发送信息, 返回响应
+    hex_receive, status = com_send_and_recv_resp(ser, msg,0)
+
+    # 判断状态
+    if status != 0:
+        print("get_status error=%d" % (status))
+        return None, status
+
+    # 判断长度
+    if hex_receive[3] != len(hex_receive):
+        print("get_status recv len error")
+        return None, -3
+
+    # 头判断
+    if hex_receive[1] != 0xf1 or hex_receive[2] != 0x1:
+        print("get_status recv len error")
+        return None, -4
+
+    # 截取消息
+    hex_msg = list(hex_receive[4:-1])
+
+    # 解释消息
+    msgs = para_msg(hex_msg)
+
+    return msgs, 0
+
+
+# 发送控制命令
+set_ctl_cnt=0
+def set_ctl(ser, msg):
+    # 握手的头及消息
+    head = [0xaa, 0x02, 0x4, 0]
+
+    # 计算长度并填充
+    length = len(head) + len(msg) + 1
+    head[3] = length
+
+    # 合并消息
+    send_msg = head + msg
+
+    # 发送并接收响应
+    hex_receive, status = com_send_and_recv_resp(ser, send_msg,0)
+
+    # 判断状态
+    if status != 0:
+        print("set_ctl error=%d" % (status))
+        return None, status
+
+    # 头判断
+    if hex_receive[1] != 0xf2:
+        print("set_ctl recv error")
+        return None, -4
+
+    global set_ctl_cnt
+    set_ctl_cnt += 1
+    print(datetime.datetime.now(),"set ctl %d"%(set_ctl_cnt),msg)
+    #print('[{}]'.format(', '.join(hex(x) for x in list(msg))))
+    #print('[{}]\n'.format(', '.join(hex(x) for x in list(hex_receive))))
+
+    # 截取消息
+    hex_msg = list(hex_receive[4:-1])
+
+    #hex_msg[1]=0xff
+    #hex_msg[2]=0xfc
+
+    # 解释消息,判断是否有错误码
+    msgs = para_set_resp(hex_msg)
+    return [hex_msg,msgs], 0
+
+
+# 通讯失败的时候，往队列发送获取失败信息
+def send_fail_msg(qout):
+    msg = [
+        ATTR_STATE_WATER, 0xff, 0xfd,
+        ATTR_STATE_BATTERY, 0xff, 0xfd,
+        ATTR_STATE_DISTANCE_U, 0xfffd,
+        ATTR_STATE_DISTANCE_D, 0xfffd,
+        ATTR_STATE_TOUCH, 0xff, 0xfd,
+    ]
+    qout.put(msg)
+    return
+
+
+def communication_thread(ser, qin, qout):
+    need_handshake = True
+    fail_cnt = 0
+    while True:
+        # 握手
+        if need_handshake:
+            ret = HandShake(ser)
+            if ret == 0:
+                need_handshake = False
+                fail_cnt = 0
+            else:
+                send_fail_msg(qin)
+                time.sleep(0.15)
+                continue
+
+        # 获取状态
+        msgs, status = get_status(ser)
+
+        # 判断状态
+        if status < 0 or len(msgs) == 0:
+            fail_cnt += 1
+            if fail_cnt > 10:
+                send_fail_msg(qin)
+                need_handshake = True
+            continue
+
+        # 将接收到的信息放入队列
+        qin.put(msgs)
+
+        # 查看是否需要发送控制命令
+        while qout.qsize() >= 1:
+            ctl_msg = qout.get()
+            set_ctl(ser, ctl_msg)
+        time.sleep(0.2)
+        continue
+
+
+# 失败返回-1,成功返回0，会创建线程循环读取和发送控制信息
+def communication_init(qin, qout):
+    # 初始化串口
+    try:
+        ser = serial.Serial(com_id, com_bit_rate, timeout=com_time_out)
+    except Exception as e:
+        print(e)
+        return -1
+
+    # 控制线程
+    com_thread = threading.Thread(name='communication_thread', target=communication_thread, args=(ser, qin, qout))
+    com_thread.setDaemon(True)  # 把子进程设置为守护线程，必须在start()之前设置
+    com_thread.start()
+
+    return 0
 
 
 # 读取IMU数据
-def imu_get(q_iv, q_im, q_y, q_c, lock_ser, file_address):
+def imu_get(q_i2v, q_i2a, q_v2i, q_c, file_address):
     # cv2.waitKey(500)
     time.sleep(0.5)
     se_i = serial.Serial(imu_com, imu_baud, timeout=imu_timeout)
@@ -52,9 +389,8 @@ def imu_get(q_iv, q_im, q_y, q_c, lock_ser, file_address):
             # 控制信号标志位
             is_ctl = False
             # 串口j采集JY61的IMU数据
-            # lock_ser.acquire()
             imu_rec = se_i.read(33)
-            # lock_ser.release()
+
             if imu_rec:
                 str_imu = binascii.b2a_hex(imu_rec).decode()
                 # file_rec = open(file_address + 'JY61.txt', 'a')
@@ -64,10 +400,10 @@ def imu_get(q_iv, q_im, q_y, q_c, lock_ser, file_address):
                     if str(type(jy_list)) != "<class 'NoneType'>":
                         sav_mess = ("normal;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;%8.2f;\n" % jy_list)
                         send_list = [round(jy_list[6], 2), round(jy_list[7], 2), round(jy_list[8], 2)]
-                        q_iv.put(send_list)
-                        q_iv.get() if q_iv.qsize() > 1 else time.sleep(0.005)
-                        q_im.put(send_list)
-                        q_im.get() if q_im.qsize() > 1 else time.sleep(0.005)
+                        q_i2v.put(send_list)
+                        q_i2v.get() if q_i2v.qsize() > 1 else time.sleep(0.005)
+                        q_i2a.put(send_list)
+                        q_i2a.get() if q_i2a.qsize() > 1 else time.sleep(0.005)
                     else:
                         sav_mess = ('NoneType;' + str_imu + ';\n')
                         print(sav_mess)
@@ -79,10 +415,10 @@ def imu_get(q_iv, q_im, q_y, q_c, lock_ser, file_address):
                 # file_rec.write(str_time + ';' + sav_mess)
                 # file_rec.close()
 
-            if not q_y.empty() and not q_c.empty():
-                yaw_c = q_y.get()
-                ac_ctl = q_c.get()
-                if abs(yaw_c) <= 0.5 and yaw_c != 0.00 and ac_ctl[0] == 0:
+            if not q_v2i.empty() and not q_c.empty():
+                yaw_c = q_v2i.get()
+                is_stop = q_c.get()
+                if abs(yaw_c) <= 0.5 and yaw_c != 0.00 and is_stop:
                     str_zero = 'ff aa 52'
                     hex_zero = bytes.fromhex(str_zero)
                     se_i.write(hex_zero)
@@ -93,242 +429,6 @@ def imu_get(q_iv, q_im, q_y, q_c, lock_ser, file_address):
             print(e)
             print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
             print(f"error line:{e.__traceback__.tb_lineno}")
-
-
-# 读取激光测距数据
-def laser_get(q_lm, file_address):
-    se_l = serial.Serial(laser_com, laser_baud, timeout=laser_timeout)
-    # 释放串口积攒的数据
-    se_l.flushInput()
-    se_l.flushOutput()
-    while True:
-        try:
-            # 串口采集TFminiPlus的测距数据
-            laser_rec = se_l.read(18)
-            if laser_rec:
-                str_laser = binascii.b2a_hex(laser_rec).decode()
-                # file_rec = open('./TestData/JY61.txt', 'a')
-                str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
-                if str_laser[0:4] == '5959':
-                    hex_f_l = laser_rec[2]
-                    hex_f_h = laser_rec[3]
-                    hex_s_l = laser_rec[4]
-                    hex_s_h = laser_rec[5]
-                    laser_F = hex_f_h << 8 | hex_f_l
-                    laser_S = hex_s_h << 8 | hex_s_l
-                    # print(str(laser_F), str(laser_S))
-                    q_lm.put(laser_F)
-                    q_lm.get() if q_lm.qsize() > 1 else time.sleep(0.005)
-                else:
-                    print('laser error:' + str_laser)
-                    # se_l.flushOutput()
-                # file_rec.write(str_time + ';' + sav_mess)
-                # file_rec.close()
-
-        except Exception as e:
-            print(e)
-            print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
-            print(f"error line:{e.__traceback__.tb_lineno}")
-
-
-# 融合前后单目、超声和IMU，快速更新四向和偏航角
-def multi_calc(q_v2s, q_cs, q_m2s, file_address):
-    # cv2.waitKey(1000)
-    # time.sleep(5)
-
-    # 根据相机编号分配模型参数
-
-    imu_yaw = 0.0
-    imu_roll = 0.0
-    imu_pitch = 0.0
-    ac_ctl = [0]
-    dis_laser = laser_threshold
-    cam_yaw = -999.9
-    side_left = -999.9
-    side_right = -999.9
-
-    start_time = time.time()
-    end_time = time.time()
-    time_mess = round((end_time - start_time) * 1000, 0)
-
-    show_width = 512
-    show_height = 600
-    # show_width = 480
-    # show_height = 270
-    # show_width = 960
-    # show_height = 540
-    half_width = int(show_width / 2)
-    half_height = int(show_height / 2)
-
-    while True:
-        if not q_v2s.empty():
-            print('Get Img')
-            break
-        else:
-            print('No Image')
-            # cv2.waitKey(1000)
-            time.sleep(5)
-    print('calc start')
-    while True:
-        # 机器定时循环
-        if not q_m2s.empty():
-            end_time = time.time()
-            time_mess = round((end_time - start_time) * 1000, 0)
-            start_time_calc = time.time()
-
-            # 接收机器数据
-            sensor_list = q_m2s.get()
-            if sensor_list[0] < 90:
-                dis_laser = sensor_list[4]
-                imu_roll = sensor_list[5]
-                imu_pitch = sensor_list[6]
-                imu_yaw = sensor_list[7]
-            else:
-                dis_laser = sensor_list[1]
-                imu_roll = sensor_list[2]
-                imu_pitch = sensor_list[3]
-                imu_yaw = sensor_list[4]
-
-            # 发往主板的控制命令
-            if not q_cs.empty():
-                ac_ctl = q_cs.get()
-
-            # 接收视觉数据
-            if not q_v2s.empty():
-                cam_yaw, side_left, side_right = q_v2s.get()
-
-            # 右上的距离展示区
-            # 左右边界
-            rgb_show_line = np.zeros((show_height, show_width, 3), np.uint8)
-            if side_left != -999.9:
-                temp_x = int(half_width - (half_width * (side_left + vehicle_left) / 500))
-                cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (0, 0, 255), 1)
-            if side_right != -999.9:
-                temp_x = int(half_width + (half_width * (side_right + vehicle_right) / 500))
-                cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (0, 0, 255), 1)
-
-            # 视觉的偏航角显示
-            if cam_yaw != -999.9:
-                yaw_sin = math.sin(math.radians(abs(cam_yaw)))
-                yaw_cos = math.cos(math.radians(abs(cam_yaw)))
-                if -90.0 <= cam_yaw < 0.0:
-                    temp_x = int(half_width - yaw_sin * (half_height * 0.5))
-                    temp_y = int(show_height - yaw_cos * (half_height * 0.5))
-                    cv2.line(rgb_show_line, (half_width, show_height), (temp_x, temp_y), (160, 0, 240), 3)
-                elif 0.0 < cam_yaw <= 90.:
-                    temp_x = int(half_width + yaw_sin * (half_height * 0.5))
-                    temp_y = int(show_height - yaw_cos * (half_height * 0.5))
-                    cv2.line(rgb_show_line, (half_width, show_height), (temp_x, temp_y), (160, 0, 240), 3)
-
-            # IMU的偏航角显示
-            yaw_sin = math.sin(math.radians(abs(imu_yaw)))
-            yaw_cos = math.cos(math.radians(abs(imu_yaw)))
-            if -90 <= imu_yaw < 0:
-                temp_x = int(half_width - yaw_sin * (half_height * 0.5))
-                temp_y = int(half_height - yaw_cos * (half_height * 0.5))
-            elif 0 <= imu_yaw <= 90:
-                temp_x = int(half_width + yaw_sin * (half_height * 0.5))
-                temp_y = int(half_height - yaw_cos * (half_height * 0.5))
-            elif -180 <= imu_yaw < -90:
-                temp_x = int(half_width - yaw_sin * (half_height * 0.5))
-                temp_y = int(half_height - yaw_cos * (half_height * 0.5))
-            elif 90 < imu_yaw <= 180:
-                temp_x = int(half_width + yaw_sin * (half_height * 0.5))
-                temp_y = int(half_height - yaw_cos * (half_height * 0.5))
-            else:
-                temp_x = half_width
-                temp_y = half_height - (half_height * 0.5)
-            cv2.line(rgb_show_line, (half_width, half_height), (temp_x, temp_y), (160, 0, 240), 3)
-
-            # 车身宽度
-            temp_x = int(half_width - (half_width * vehicle_left / 500))
-            cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (255, 255, 255), 1)
-            temp_x = int(half_width + (half_width * vehicle_right / 500))
-            cv2.line(rgb_show_line, (temp_x, 0), (temp_x, show_height), (255, 255, 255), 1)
-
-            # 右下的数据展示区
-            rgb_show_data = np.zeros((show_height, show_width, 3), np.uint8)
-            str_0 = 'Timer:' + str(time_mess)
-            if cam_yaw != -999.9:
-                str_0 += '  Y:' + str(round(cam_yaw, 2))
-            else:
-                str_0 += '  Y:N/A'
-            if dis_laser != -999.9:
-                str_0 += '  Laser:' + str(dis_laser)
-            else:
-                str_0 += '  Laser:N/A'
-            if side_left != -999.9:
-                str_1 = 'L:' + str(int(side_left))
-            else:
-                str_1 = 'L:N/A'
-
-            if side_right != -999.9:
-                str_2 = 'R:' + str(int(side_right))
-            else:
-                str_2 = 'R:N/A'
-
-            if len(ac_ctl) > 2:
-                if ac_ctl[0] == ac_ctl[2] == 1:
-                    if ac_ctl[1] == ac_ctl[3]:
-                        str_3 = 'Front'
-                    elif ac_ctl[1] > ac_ctl[3]:
-                        str_3 = 'Right'
-                    elif ac_ctl[1] < ac_ctl[3]:
-                        str_3 = 'Left'
-                    else:
-                        str_3 = 'error'
-                elif ac_ctl[0] == ac_ctl[2] == 2:
-                    str_3 = 'Back'
-                elif ac_ctl[0] == 1 and ac_ctl[2] == 2:
-                    str_3 = 'rotateRight'
-                elif ac_ctl[0] == 2 and ac_ctl[2] == 1:
-                    str_3 = 'rotateLeft'
-                elif ac_ctl[0] == ac_ctl[2] == 0:
-                    str_3 = 'Stop'
-                else:
-                    str_3 = 'error'
-                if ac_ctl[0] == 0:
-                    str_3 += ' '
-                elif ac_ctl[0] == 1:
-                    str_3 += '+'
-                elif ac_ctl[0] == 2:
-                    str_3 += '-'
-                str_3 += str(ac_ctl[1])
-                str_3 += '  '
-                if ac_ctl[2] == 0:
-                    str_3 += ' '
-                elif ac_ctl[2] == 1:
-                    str_3 += '+'
-                elif ac_ctl[2] == 2:
-                    str_3 += '-'
-                str_3 += str(ac_ctl[3])
-            else:
-                str_3 = 'Control:N/A'
-
-            str_3  += '  Yaw:' + str(imu_yaw) + '  Roll:' + str(imu_roll) + '  Pitch:' + str(imu_pitch)
-
-            cv2.putText(rgb_show_data, str_0, (0, int(show_height / 5) - 5), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 255),
-                        1)
-            cv2.putText(rgb_show_data, str_1, (0, int(show_height * 2 / 5) - 5), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 255),
-                        1)
-            cv2.putText(rgb_show_data, str_2, (0, int(show_height * 3 / 5) - 5), cv2.FONT_HERSHEY_COMPLEX, 0.6,
-                        (255, 255, 255), 1)
-            cv2.putText(rgb_show_data, str_3, (0, int(show_height * 4 / 5) - 5), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 255, 255), 1)
-
-            # 4图拼接
-            rgb_mix = np.zeros((show_height, (show_width * 2), 3), np.uint8)
-            rgb_mix[0:show_height, 0:show_width] = rgb_show_line
-            rgb_mix[0:show_height, show_width:(show_width * 2)] = rgb_show_data
-            cv2.imshow('ShowData', rgb_mix)
-            cv2.waitKey(1)
-            # cv2.imwrite(file_address + 'C' + str_Time + '.jpg', rgb_show_0)
-            # cv2.imwrite(file_address + 'M' + str_Time + '.jpg', rgb_mix)
-
-            end_time_calc = time.time()
-            time_mess_calc = round((end_time_calc - start_time_calc) * 1000, 0)
-
-            start_time = time.time()
-
 
 def quit_all():
     print('Exit ALL')
@@ -367,101 +467,6 @@ def read_message(hex_rec):
     return is_normal, ret_list
 
 
-# 主板通信交互
-def machine_communication(q_a2m, q_m2a, q_m2s, q_i, q_l):
-    print('Communication Start')
-    se_m = serial.Serial(machine_com, machine_baud, timeout=machine_timeout)
-    loop_nofeedback = 0  # 累加无反馈次数
-    threshold_nofeedback = 10  # 累计无反馈上限值
-    imu_roll = 0.0
-    imu_pitch = 0.0
-    imu_yaw = 0.0
-    dis_laser = 999.9
-
-    while True:
-        ret_list = [99]
-        try:
-            if not q_a2m.empty():
-                hex_send = q_a2m.get()
-            else:
-                # cv2.waitKey(30)
-                time.sleep(0.03)
-                if not q_a2m.empty():
-                    hex_send = q_a2m.get()
-                else:
-                    # print('Receive Action Error')
-                    hex_send = bytes.fromhex('aa 01 00 00 00 00 00 00 b0')
-            is_normal, ret_list = read_message(hex_send)
-            if is_normal:
-                str_send_msg = ''
-                if ret_list[0] == ret_list[2] == 1:
-                    str_send_msg += 'Front'
-                    if ret_list[1] == ret_list[3]:
-                        str_send_msg += 'Straight'
-                    elif ret_list[1] > ret_list[3]:
-                        str_send_msg += 'Right'
-                    elif ret_list[1] < ret_list[3]:
-                        str_send_msg += 'Left'
-                elif ret_list[0] == ret_list[2] == 2:
-                    str_send_msg += 'Back'
-                elif ret_list[0] == 1 and ret_list[2] == 2:
-                    str_send_msg += 'RotateRight'
-                elif ret_list[0] == 2 and ret_list[2] == 1:
-                    str_send_msg += 'RotateLeft'
-                # if len(str_send_msg) > 1:
-                    # print(str_send_msg)
-            else:
-                print('Action Message Error')
-            no_feedback = True
-            while no_feedback:
-                se_m.write(hex_send)
-                # cv2.waitKey(50)
-                time.sleep(0.05)
-                if not q_i.empty():
-                    imu_list = q_i.get()
-                    imu_roll = imu_list[0]
-                    imu_pitch = imu_list[1]
-                    imu_yaw = -imu_list[2]
-                if not q_l.empty():
-                    dis_laser = q_l.get()
-                hex_receive = se_m.readline()
-                if hex_receive:
-                    # 收到反馈，跳出反馈循环
-                    no_feedback = False
-                    str_rec = binascii.b2a_hex(hex_receive).decode('utf-8')
-                    if len(str_rec) >= 12:
-                        if str_rec[0:4] == 'aa02':
-                            is_normal, ret_list = read_message(hex_receive)
-                        else:
-                            ret_list = [99]
-                            print('头部异常', str_rec)
-                    else:
-                        ret_list = [99]
-                        print('长度异常', str_rec)
-                else:
-                    # 重新发送命令，并累计无反馈次数。到达阈值后报错退出
-                    loop_nofeedback += 1
-                    if loop_nofeedback >= threshold_nofeedback:
-                        print('无反馈')
-                        ret_list = [98]
-                        no_feedback = False
-        except Exception as e:
-            print('******   Machine Communication Error   ******')
-            print(e)
-            print(f'error file:{e.__traceback__.tb_frame.f_globals["__file__"]}')
-            print(f"error line:{e.__traceback__.tb_lineno}")
-            print('******   Error Message End   ******')
-        finally:
-            ret_list.append(dis_laser)
-            ret_list.append(imu_roll)
-            ret_list.append(imu_pitch)
-            ret_list.append(imu_yaw)
-            q_m2a.put(ret_list)
-            q_m2a.get() if q_m2a.qsize() > 1 else time.sleep(0.001)
-            q_m2s.put(ret_list)
-            q_m2s.get() if q_m2s.qsize() > 1 else time.sleep(0.001)
-
-
 if __name__ == '__main__':
     # 新建文件夹,读取时间作为文件名
     str_fileAddress = './TestData/'
@@ -475,56 +480,35 @@ if __name__ == '__main__':
     mp.set_start_method(method='spawn')  # init
     processes = []
     lock = mp.Lock()
-    # 单目相机测距，视觉数据给自动控制和展示，视觉偏航角给imu
-    queue_capture = mp.Queue(maxsize=2)
+    # 深度相机测距，偏航、左距离、右距离给自动控制，视觉偏航角给imu
     queue_vision2action = mp.Queue(maxsize=2)
-    queue_yaw_imu = mp.Queue(maxsize=2)
-    queue_vision2show = mp.Queue(maxsize=2)
+    queue_vision2imu = mp.Queue(maxsize=2)
 
-    # 自动控制交互，控制hex给机器，控制命令给展示和imu，接收键盘输入
-    queue_action2machine = mp.Queue(maxsize=2)
-    queue_control_show = mp.Queue(maxsize=2)
+    # 自动控制交互，控制hex给机器，控制命令给imu
     queue_control_imu = mp.Queue(maxsize=2)
-    queue_keyboard = mp.Queue(maxsize=2)
 
-    # 机器通信交互，反馈数据给自动控制
-    queue_machine2action = mp.Queue(maxsize=2)
-    queue_machine2show = mp.Queue(maxsize=2)
 
-    # 激光测距数据，发送至自动控制和计算
-    queue_laser_machine = mp.Queue(maxsize=2)
-    # IMU，偏航、俯仰和翻滚，分发前相机测距、计算和自动控制
-    queue_imu_vision = mp.Queue(maxsize=2)
-    queue_imu_machine = mp.Queue(maxsize=2)
+    # IMU，偏航、俯仰和翻滚，分发前相机测距和自动控制
+    queue_imu2vision = mp.Queue(maxsize=2)
+    queue_imu2action = mp.Queue(maxsize=2)
 
-    # # 单目视觉测距，获取+测距
-    # processes.append(mp.Process(target=G_Vision.image_put, args=(queue_capture, camera_id)))
-    # processes.append(
-    #     mp.Process(target=G_Vision.distance_get, args=(
-    #         queue_capture, camera_id, queue_vision2action, queue_yaw_imu, lock, str_fileAddress, queue_vision2show)))
+    # 创建队列
+    qout = queue.Queue(3)
+    qin = queue.Queue(3)
+    communication_init(qin, qout)
 
     # 深度相机测距
-    processes.append(mp.Process(target=G_RGBD.distance_get, args=(queue_vision2action, queue_yaw_imu, queue_vision2show)))
+    processes.append(mp.Process(target=G_RGBD.distance_get, args=(queue_vision2action, queue_vision2imu)))
 
     # 自动运行导航
     processes.append(
         mp.Process(target=G_Action.autocontrol_run, args=(
-            queue_vision2action, queue_machine2action, queue_action2machine, queue_control_show, queue_control_imu, lock, str_fileAddress, queue_keyboard)))
+            queue_vision2action, queue_imu2action, qin, qout, queue_control_imu, str_fileAddress)))
 
-
-    # 对接机器主板
-    processes.append(mp.Process(target=machine_communication, args=(queue_action2machine, queue_machine2action, queue_machine2show, queue_imu_machine, queue_laser_machine)))
-
-
-    # 视觉感知融合
-    processes.append(mp.Process(target=multi_calc, args=(
-            queue_vision2show, queue_control_show, queue_machine2show, str_fileAddress)))
-    # 激光测距
-    processes.append(mp.Process(target=laser_get, args=( queue_laser_machine, str_fileAddress)))
     # IMU
     processes.append(
         mp.Process(target=imu_get, args=(
-            queue_imu_vision, queue_imu_machine, queue_yaw_imu, queue_control_imu, lock, str_fileAddress)))
+            queue_imu2vision, queue_imu2action, queue_vision2imu, queue_control_imu, str_fileAddress)))
 
     for process in processes:
         process.daemon = True

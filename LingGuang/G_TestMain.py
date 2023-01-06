@@ -1,186 +1,396 @@
-import crcmod
 import serial
 import time
+import threading
+import queue
+import datetime
+import numpy as np
 import binascii
 
-import CVFunc
+com_id = 'COM3'
+com_bit_rate = 115200
+com_time_out = 0.1
 
-ATTR_STATE_RSSI = hex(1<<5 | 0)[2:]   # 信号强度
-ATTR_STATE_UPDOWN_LOAD = hex(1<<5 | 1)[2:]   # 提升负荷
-ATTR_STATE_WATER = hex(1<<5 | 2)[2:]   # 液位
-ATTR_STATE_BATTERY = hex(1<<5 | 3)[2:]   # 电量
-ATTR_STATE_DIR_U = hex(1<<5 | 4)[2:]   # 转向上
-ATTR_STATE_DIR_D = hex(1<<5 | 5)[2:]   # 转向下
-ATTR_STATE_DISTANCE_U = hex(1<<5 | 6)[2:]   # 测距上
-ATTR_STATE_DISTANCE_D = hex(1<<5 | 7)[2:]   # 测试下
-ATTR_STATE_DISTANCE_L = hex(1<<5 | 8)[2:]   # 测距左
-ATTR_STATE_DISTANCE_R = hex(1<<5 | 9)[2:]   # 测距右
-ATTR_STATE_NTC = hex(1<<5 | 10)[2:]   # NTC温度
-ATTR_STATE_TOUCH = hex(1<<5 | 11)[2:]   # 防跌落状态 STATE_ON: 至少有一个防跌落触发
-ATTR_STATE_TIME_ONCE = hex(1<<5 | 12)[2:]   # 本次工作时长
-ATTR_STATE_TIME_SUM = hex(1<<5 | 13)[2:]   # 累计工作时长
+ATTR_STATE_RSSI = (1 << 5 | 0)  # 信号强度
+ATTR_STATE_UPDOWN_LOAD = (1 << 5 | 1)  # 提升负荷
+ATTR_STATE_WATER = (1 << 5 | 2)  # 液位
+ATTR_STATE_BATTERY = (1 << 5 | 3)  # 电量
+ATTR_STATE_DIR_U = (1 << 5 | 4)  # 转向上
+ATTR_STATE_DIR_D = (1 << 5 | 5)  # 转向下
+ATTR_STATE_DISTANCE_U = (1 << 5 | 6)  # 测距上
+ATTR_STATE_DISTANCE_D = (1 << 5 | 7)  # 测试下
+ATTR_STATE_DISTANCE_L = (1 << 5 | 8)  # 测距左
+ATTR_STATE_DISTANCE_R = (1 << 5 | 9)  # 测距右
+ATTR_STATE_NTC = (1 << 5 | 10)  # NTC温度
+ATTR_STATE_TOUCH = (1 << 5 | 11)  # 防跌落状态 STATE_ON: 至少有一个防跌落触发
+ATTR_STATE_TIME_ONCE = (1 << 5 | 12)  # 本次工作时长
+ATTR_STATE_TIME_SUM = (1 << 5 | 13)  # 累计工作时长
+ATTR_STATE_VISION_STATE = (1 << 5 | 14)  # 视觉工作状态
 
-ATTR_CONTROL_MODE = hex(2<<5 | 0)[2:]   # 运行模式
-ATTR_CONTROL_BOOST_STATE = hex(2<<5 | 1)[2:]   # 推进使能
-ATTR_CONTROL_BOOST_VALUE = hex(2<<5 | 2)[2:]   # 推进力度
-ATTR_CONTROL_ADHESION = hex(2<<5 | 3)[2:]   # 吸附
-ATTR_CONTROL_UPDOWN = hex(2<<5 | 4)[2:]   # 上下行
-ATTR_CONTROL_DIR = hex(2<<5 | 5)[2:]   # 转向
-ATTR_CONTROL_CLEAN = hex(2<<5 | 6)[2:]   # 清洗系统
-ATTR_CONTROL_WATER = hex(2<<5 | 7)[2:]   # 水循环系统
-ATTR_CONTROL_AUTO_TYPE = hex(2<<5 | 8)[2:]   # 自动类型
-ATTR_CONTROL_MOVE_PATH = hex(2<<5 | 9)[2:]   # 贴墙距离
-ATTR_CONTROL_WATER_RECYCLE = hex(2<<5 | 10)[2:]   # 水回收
-ATTR_CONTROL_WATER_HEAT = hex(2<<5 | 11)[2:]   # 水加热
+ATTR_CONTROL_MODE = (2 << 5 | 0)  # 运行模式
+ATTR_CONTROL_BOOST_STATE = (2 << 5 | 1)  # 推进使能
+ATTR_CONTROL_BOOST_VALUE = (2 << 5 | 2)  # 推进力度
+ATTR_CONTROL_ADHESION = (2 << 5 | 3)  # 吸附
+ATTR_CONTROL_UPDOWN = (2 << 5 | 4)  # 上下行
+ATTR_CONTROL_DIR = (2 << 5 | 5)  # 转向
+ATTR_CONTROL_CLEAN = (2 << 5 | 6)  # 清洗系统
+ATTR_CONTROL_WATER = (2 << 5 | 7)  # 水循环系统
+ATTR_CONTROL_AUTO_TYPE = (2 << 5 | 8)  # 自动类型
+ATTR_CONTROL_MOVE_PATH = (2 << 5 | 9)  # 贴墙距离
+ATTR_CONTROL_WATER_RECYCLE = (2 << 5 | 10)  # 水回收
+ATTR_CONTROL_WATER_HEAT = (2 << 5 | 11)  # 水加热
+ATTR_CONTROL_CATERPILLA_LEFT = (2 << 5 | 12)  # 左履带
+ATTR_CONTROL_CATERPILLA_RIGHT = (2 << 5 | 13)  # 右履带
 
-ATTR_CONFIG_ADDR = hex(3<<5 | 0)[2:]   # 设备地址
-ATTR_CONFIG_UD_RESTART = hex(3<<5 | 1)[2:]   # 提升重启
-ATTR_CONFIG_OBSTACLE = hex(3<<5 | 2)[2:]   # 避障距离
+ATTR_CONFIG_ADDR = (3 << 5 | 0)  # 设备地址
+ATTR_CONFIG_UD_RESTART = (3 << 5 | 1)  # 提升重启
+ATTR_CONFIG_OBSTACLE = (3 << 5 | 2)  # 避障距离
 
-ATTR_SPEED_UP = hex(4<<5 | 0)[2:]   # 速度 - 上行
-ATTR_SPEED_DOWN = hex(4<<5 | 1)[2:]   # 速度 - 下行
-ATTR_SPEED_ADHESION = hex(4<<5 | 2)[2:]   # 速度 - 吸附
-ATTR_SPEED_STEAM = hex(4<<5 | 3)[2:]   # 速度 - 水汽
-ATTR_SPEED_CLEAN = hex(4<<5 | 4)[2:]   # 速度 - 清洗
-ATTR_SPEED_U_SPRAY1 = hex(4<<5 | 5)[2:]   # 速度 - 上行喷水1
-ATTR_SPEED_U_SPRAY2 = hex(4<<5 | 6)[2:]   # 速度 - 上行喷水2
-ATTR_SPEED_D_SPRAY1 = hex(4<<5 | 7)[2:]   # 速度 - 下行喷水1
-ATTR_SPEED_D_SPRAY2 = hex(4<<5 | 8)[2:]   # 速度 - 下行喷水2
+ATTR_SPEED_UP = (4 << 5 | 0)  # 速度 - 上行
+ATTR_SPEED_DOWN = (4 << 5 | 1)  # 速度 - 下行
+ATTR_SPEED_ADHESION = (4 << 5 | 2)  # 速度 - 吸附
+ATTR_SPEED_STEAM = (4 << 5 | 3)  # 速度 - 水汽
+ATTR_SPEED_CLEAN = (4 << 5 | 4)  # 速度 - 清洗
+ATTR_SPEED_U_SPRAY1 = (4 << 5 | 5)  # 速度 - 上行喷水1
+ATTR_SPEED_U_SPRAY2 = (4 << 5 | 6)  # 速度 - 上行喷水2
+ATTR_SPEED_D_SPRAY1 = (4 << 5 | 7)  # 速度 - 下行喷水1
+ATTR_SPEED_D_SPRAY2 = (4 << 5 | 8)  # 速度 - 下行喷水2
+
+# 分开两个字节的消息
+V_BASIC = [
+    ATTR_STATE_RSSI,  # 信号强度
+    ATTR_STATE_WATER,  # 液位
+    ATTR_STATE_BATTERY,  # 电量
+    ATTR_STATE_DIR_U,  # 转向上
+    ATTR_STATE_DIR_D,  # 转向下
+    ATTR_STATE_NTC,  # NTC温度
+    ATTR_STATE_TOUCH,  # 防跌落状态 STATE_ON: 至少有一个防跌落触发
+
+    ATTR_SPEED_UP,  # 速度 - 上行
+    ATTR_SPEED_DOWN,  # 速度 - 下行
+    ATTR_SPEED_ADHESION,  # 速度 - 吸附
+    ATTR_SPEED_STEAM,  # 速度 - 水汽
+    ATTR_SPEED_CLEAN,  # 速度 - 清洗
+    ATTR_SPEED_U_SPRAY1,  # 速度 - 上行喷水1
+    ATTR_SPEED_U_SPRAY2,  # 速度 - 上行喷水2
+    ATTR_SPEED_D_SPRAY1,  # 速度 - 下行喷水1
+    ATTR_SPEED_D_SPRAY2,  # 速度 - 下行喷水2
+
+    ATTR_CONTROL_ADHESION,  # 吸附
+    ATTR_CONTROL_CLEAN,  # 清洗系统
+    ATTR_CONTROL_WATER,  # 水循环系统
+    ATTR_CONTROL_CATERPILLA_LEFT,  # 左履带
+    ATTR_CONTROL_CATERPILLA_RIGHT,  # 右履带
+]
+
+# 2字节组成u16的消息
+V_VALUE = [
+    ATTR_STATE_UPDOWN_LOAD,  # 提升负荷
+    ATTR_STATE_DISTANCE_U,  # 测距上
+    ATTR_STATE_DISTANCE_D,  # 测试下
+    ATTR_STATE_DISTANCE_L,  # 测距左
+    ATTR_STATE_DISTANCE_R,  # 测距右
+    ATTR_STATE_TIME_ONCE,  # 本次工作时长
+    ATTR_STATE_TIME_SUM,  # 累计工作时长
+]
 
 
+# 数据CRC8校验
+def xdata_CRC8(data):
+    crc8 = data[0]
+    for i in range(1, len(data), 1):
+        crc8 = crc8 ^ data[i]
+    return crc8
 
-# 根据发送的数据，拆分控制信号和主板信号
-def read_message(hex_rec):
-    str_rec = binascii.b2a_hex(hex_rec).decode()
-    is_normal = True
 
-    length_rec = len(str_rec)
+# 串口发送命令，自动计算长度，并添加crc。 然后接收并返回响应
+def com_send_and_recv_resp(ser, msg,resp_len):
+    # 计算并填充长度
+    length = len(msg) + 1
+    msg[3] = length
 
-    if str_rec[0:2] == 'aa':
-        ret_list = [[0, '']]
-        if str_rec[2:4] == 'ff' or str_rec[2:4] == '0f':
-            msg_rec = str_rec[8:length_rec - 2]
-            str_msg = bytes.fromhex(msg_rec).decode()
-            value_num = 0
-            while len(str_msg) > 0:
-                value_num += 1
-                end_value = str_msg.find('#')
-                take_msg = str_msg[0:end_value]
-                end_id = take_msg.find(':')
-                take_id = take_msg[0:end_id]
-                take_value = take_msg[end_id + 1:]
-                str_msg = str_msg[end_value + 1:]
-                ret_list.append([int(take_id), take_value])
-            ret_list[0][0] = value_num
-            ret_list[0][1] = 'ff'
-            print(ret_list)
+    # 计算并添加crc8
+    crc8 = xdata_CRC8(msg)
+    msg.append(crc8)
 
-        elif str_rec[2:4] == 'f0':
-            pass
-        elif str_rec[2:4] == 'f1':
-            if str_rec[4:6] == '04':
-                str_msg = str_rec[8:length_rec-2]
-                for i in range(0, int(len(str_msg) / 3), 1):
-                    ret_list.append([str_msg[i*3:i*3+1], str_msg[i*3+1:i*3+3]])
-                ret_list[0][0] = int(len(str_msg) / 3)
-                ret_list[0][1] = '04'
-        elif str_rec[2:4] == 'f2':
-            pass
+    # 发送命令
+    ret = ser.write(msg)
+    # 判断长度
+    if ret != len(msg):
+        print("com_send len error")
+        return None, -1
+
+    # 读取信息
+    if resp_len==0:
+        hex_receive = ser.read(length)
+    elif resp_len>0:
+        hex_receive = ser.read(resp_len)
+    else:
+        hex_receive = ser.readline()
+    # 判断长度
+    if len(hex_receive) <= 5:
+        print("com recv too short：%d" % (len(hex_receive)))
+        return None, -2
+    elif hex_receive[3] != len(hex_receive):
+        print("com recv len error")
+        return None, -3
+
+    # 头判断
+    if hex_receive[0] != 0xaa:
+        print("com recv head[0] error:%d" % (hex_receive[0]))
+        return None, -4
+
+    # 比较CRC
+    crc_cal = xdata_CRC8(hex_receive[:-1])
+    crc_rec = hex_receive[-1]
+    if crc_cal != crc_rec:
+        print("com recv crc error")
+        return None, -5
+
+    return hex_receive, 0
+
+
+# 握手函数，成功接收到握手信息才返回
+def HandShake(ser):
+    # 握手的头及消息
+    head = [0xaa, 0x0f, 0xff, 0]
+    msg = "0:1.0#1:2.0#2:#3:#4:#5:#6:#"
+
+    # 转为askii码
+    msg_values = [ord(character) for character in msg]
+
+    # 合并消息
+    shake = head + msg_values
+
+    # 发送收握手信息, 返回响应
+    hex_receive, status = com_send_and_recv_resp(ser, shake,-1)
+
+    # 判断状态
+    if status != 0:
+        print("hangshake error=%d" % (status))
+        return status
+
+    # 头判断
+    if hex_receive[1] != 0xff:
+        print("hangshake recv head[1] error")
+        return -4
+
+    # 截取其中的字符串
+    str_receive = str(hex_receive[4:-2])
+    print("handshake ok:", str_receive)
+    # spl = str_receive.split('#')
+    # print(spl)
+    return 0
+
+
+# 解析接收到的消息
+def para_msg(msg):
+    ret = []
+    l = len(msg)
+    for i in range(0, l, 3):
+        cmd = msg[i]
+        bh = msg[i + 1]
+        bl = msg[i + 2]
+        if cmd in V_BASIC:
+            ret.append([cmd, bh, bl])
+        elif cmd in V_VALUE:
+            ret.append([cmd, (bh << 8 | bl)])
         else:
-            is_normal = False
-            ret_list = [[0, 'fe']]
-    else:
-        is_normal = False
-        ret_list = [[0, 'fe']]
+            print("unknow cmd:%d" % (cmd))
 
-    return is_normal, ret_list
+    return ret
 
 
+# 解析控制响应消息的错误码
+def para_set_resp(msg):
+    ret = []
+    l = len(msg)
+    for i in range(0, l, 3):
+        cmd = msg[i]
+        bh = msg[i + 1]
+        bl = msg[i + 2]
+
+        if bh!=0 or bl!=0:
+            error = [cmd, hex(bh << 8 | bl)]
+            ret.append(error)
+            print("ctl error:",error)
+    return ret
+
+
+# 获取状态
+def get_status(ser):
+    # 握手的头及消息
+    head = [0xaa, 0x01, 0x1, 0]
+    msg = [ATTR_STATE_WATER, 0, 0, ATTR_STATE_BATTERY, 0, 0, ATTR_STATE_DISTANCE_U, 0, 0, ATTR_STATE_DISTANCE_D, 0, 0,
+           ATTR_STATE_TOUCH, 0, 0]
+
+    # 合并消息
+    msg = head + msg
+
+    # 发送信息, 返回响应
+    hex_receive, status = com_send_and_recv_resp(ser, msg,0)
+
+    # 判断状态
+    if status != 0:
+        print("get_status error=%d" % (status))
+        return None, status
+
+    # 判断长度
+    if hex_receive[3] != len(hex_receive):
+        print("get_status recv len error")
+        return None, -3
+
+    # 头判断
+    if hex_receive[1] != 0xf1 or hex_receive[2] != 0x1:
+        print("get_status recv len error")
+        return None, -4
+
+    # 截取消息
+    hex_msg = list(hex_receive[4:-1])
+
+    # 解释消息
+    msgs = para_msg(hex_msg)
+
+    return msgs, 0
+
+
+# 发送控制命令
+set_ctl_cnt=0
+def set_ctl(ser, msg):
+    # 握手的头及消息
+    head = [0xaa, 0x02, 0x4, 0]
+
+    # 计算长度并填充
+    length = len(head) + len(msg) + 1
+    head[3] = length
+
+    # 合并消息
+    send_msg = head + msg
+
+    # 发送并接收响应
+    hex_receive, status = com_send_and_recv_resp(ser, send_msg,0)
+
+    # 判断状态
+    if status != 0:
+        print("set_ctl error=%d" % (status))
+        return None, status
+
+    # 头判断
+    if hex_receive[1] != 0xf2:
+        print("set_ctl recv error")
+        return None, -4
+
+    global set_ctl_cnt
+    set_ctl_cnt += 1
+    print(datetime.datetime.now(),"set ctl %d"%(set_ctl_cnt),msg)
+    #print('[{}]'.format(', '.join(hex(x) for x in list(msg))))
+    #print('[{}]\n'.format(', '.join(hex(x) for x in list(hex_receive))))
+
+    # 截取消息
+    hex_msg = list(hex_receive[4:-1])
+
+    #hex_msg[1]=0xff
+    #hex_msg[2]=0xfc
+
+    # 解释消息,判断是否有错误码
+    msgs = para_set_resp(hex_msg)
+    return [hex_msg,msgs], 0
+
+
+# 通讯失败的时候，往队列发送获取失败信息
+def send_fail_msg(qout):
+    msg = [
+        ATTR_STATE_WATER, 0xff, 0xfd,
+        ATTR_STATE_BATTERY, 0xff, 0xfd,
+        ATTR_STATE_DISTANCE_U, 0xfffd,
+        ATTR_STATE_DISTANCE_D, 0xfffd,
+        ATTR_STATE_TOUCH, 0xff, 0xfd,
+    ]
+    qout.put(msg)
+    return
+
+
+def communication_thread(ser, qin, qout):
+    need_handshake = True
+    fail_cnt = 0
+    while True:
+        # 握手
+        if need_handshake:
+            ret = HandShake(ser)
+            if ret == 0:
+                need_handshake = False
+                fail_cnt = 0
+            else:
+                send_fail_msg(qin)
+                time.sleep(0.15)
+                continue
+
+        # 获取状态
+        msgs, status = get_status(ser)
+
+        # 判断状态
+        if status < 0 or len(msgs) == 0:
+            fail_cnt += 1
+            if fail_cnt > 10:
+                send_fail_msg(qin)
+                need_handshake = True
+            continue
+
+        # 将接收到的信息放入队列
+        qin.put(msgs)
+
+        # 查看是否需要发送控制命令
+        while qout.qsize() >= 1:
+            ctl_msg = qout.get()
+            set_ctl(ser, ctl_msg)
+        time.sleep(0.2)
+        continue
+
+
+# 失败返回-1,成功返回0，会创建线程循环读取和发送控制信息
+def communication_init(qin, qout):
+    # 初始化串口
+    try:
+        ser = serial.Serial(com_id, com_bit_rate, timeout=com_time_out)
+    except Exception as e:
+        print(e)
+        return -1
+
+    # 控制线程
+    com_thread = threading.Thread(name='communication_thread', target=communication_thread, args=(ser, qin, qout))
+    com_thread.setDaemon(True)  # 把子进程设置为守护线程，必须在start()之前设置
+    com_thread.start()
+
+    return 0
+
+import cv2
 if __name__ == '__main__':
-    ser = serial.Serial('COM6', 115200, timeout=0.05)
+    # 创建队列
+    qout = queue.Queue(3)
+    qin = queue.Queue(3)
 
-    print('等待握手协议')
+    communication_init(qin, qout)
 
-    no_feedback = True
-    # 编制握手信息
-    hex_message = bytes.hex(b'0:#1:#2:#3:#4:#5:#6:#')
-    msg_size = hex(int(len(hex_message)))[2:]
-    if len(hex_message) < 16:
-        msg_size = '0' + msg_size
-    head_HandShake = 'aa0fff' + msg_size
-    hex_HandShake = bytes.fromhex(head_HandShake + hex_message)
-    crc8 = crcmod.predefined.Crc('crc-8')
-    crc8.update(hex_HandShake)
-    if len(hex(crc8.crcValue)[2:]) == 1:
-        hex_crc8 = bytes.fromhex('0' + hex(crc8.crcValue)[2:])
-    else:
-        hex_crc8 = bytes.fromhex(hex(crc8.crcValue)[2:])
-    hex_HandShake = hex_HandShake + hex_crc8
+    # img_test = cv2.imread('./part.jpg')
+    # cv2.imshow('Test', img_test)
 
-    while no_feedback:
-        ser.write(hex_HandShake)
-        time.sleep(0.15)
-        hex_receive = ser.readline()
-        if hex_receive:
-            str_receive = binascii.b2a_hex(hex_receive).decode('utf-8')
-            if len(str_receive) > 10:
-                is_normal, ret_list = read_message(hex_receive)
-                if is_normal:
-                    print(ret_list)
-                    no_feedback = False
-                else:
-                    print('握手包读取错误')
-            else:
-                print('握手包过短')
+    recv_cnt = 0
+    while True:
+        #处理接收队列信息
+        while qin.qsize() >= 1:
+            msg = qin.get()
+            recv_cnt+=1
+            print(datetime.datetime.now(),"recv %d:"%recv_cnt,msg)
 
-    print('完成握手，获取配置')
-
-    str_config_head = 'aa 01 04'
-
-    int_config_len = 5 + (3 * 3)
-    str_config_len = hex(int_config_len)[2:]
-    if int_config_len < 16:
-        str_config_size = '0' + str_config_len
-
-    str_config_msg = ATTR_CONFIG_ADDR + '0000'
-    str_config_msg += ATTR_CONFIG_UD_RESTART + '0000'
-    str_config_msg += ATTR_CONFIG_OBSTACLE + '0000'
-
-    hex_config = CVFunc.set_order(str_config_head + str_config_len + str_config_msg)
-
-    no_feedback = True
-    while no_feedback:
-        ser.write(hex_config)
-        time.sleep(0.15)
-        hex_receive = ser.readline()
-        if hex_receive:
-            str_receive = binascii.b2a_hex(hex_receive).decode('utf-8')
-            if len(str_receive) > 10:
-                no_feedback = False
-                is_normal, ret_list = read_message(hex_receive)
-                if is_normal:
-                    print(ret_list)
-                    no_feedback = False
-                else:
-                    print('配置包读取错误')
-            else:
-                print('配置包过短')
-
-    print('已获取配置，开始运行')
-    # 状态查询语句
-    str_state_head = 'aa 01 01'
-    int_state_len = 5 + (4 * 3)
-    str_state_len = hex(int_state_len)[2:]
-    if int_state_len < 16:
-        str_state_len = '0' + str_state_len
-    str_state_msg = ATTR_STATE_BATTERY + '0000'
-    str_state_msg += ATTR_STATE_DISTANCE_U + '0000'
-    str_state_msg += ATTR_STATE_TOUCH + '0000'
-    str_state_msg += ATTR_STATE_TIME_ONCE + '0000'
-    hex_state = CVFunc.set_order(str_state_head + str_state_len + str_state_msg)
-    # 控制设置语句
-    str_control_head = 'aa 02 01'
-
-
-    str_control_msg =
-
+        #等待键盘控制
+        #k_input = cv2.waitKey(200) & 0xFF
+        #if k_input == ord('w'):
+        ctl = [
+            ATTR_CONTROL_ADHESION, 1, 75,  # 吸附
+            ATTR_CONTROL_CLEAN, 1, 75,  # 清洗系统
+            ATTR_CONTROL_WATER, 0, 0,  # 水循环系统
+            ATTR_CONTROL_CATERPILLA_LEFT, 1, 50,  # 左履带
+            ATTR_CONTROL_CATERPILLA_RIGHT, 1, 50,  # 右履带
+        ]
+        qout.put(ctl)
+        time.sleep(0.2)
+        continue
