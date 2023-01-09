@@ -118,7 +118,7 @@ def line_detect_thread(q_in, q_out):
         # 帧率
         fps = frame_cnt / (time.time() - start_time)
         ms = (time.time() - one_time) * 1000
-        print('line proc fsp= %.2f  one proc =%.2f\n' % (fps, ms))
+        # print('line proc fsp= %.2f  one proc =%.2f\n' % (fps, ms))
 
         txt = format("fps=%.1f c=%.1f ms" % (fps, ms))
         cv2.putText(img_color, txt, (0, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
@@ -398,7 +398,7 @@ def cal_line_mask_border(lines_2d, l3d, masks, dis_thr, image_in, show_debug_img
             ret_2d.append([x0, y0, x1, y1, score, cnt[1][0], cnt[0][0], length, dis[0]])
         ret_3d.append(l3d[i])
 
-    print('cal_line_mask_border time= %.4f ms' % ((time.time() - start_time) * 1000))
+    # print('cal_line_mask_border time= %.4f ms' % ((time.time() - start_time) * 1000))
     if show_debug_img:
         image_ml = image_in.copy()
         for l in ret_2d:
@@ -838,7 +838,7 @@ def yaw_and_line_detect_thread(queue_line, install_height, Lthr, Hthr, Xthr, Zth
         # 获取对齐图像帧及直线检测结果
         data = queue_line.get()
         frame_cnt += 1
-        print("frame_cnt=%d" % (frame_cnt))
+        # print("frame_cnt=%d" % (frame_cnt))
 
         if cv2.waitKey(1) == ord(' '):  # or frame_cnt==1068:
             cv2.waitKey(0)

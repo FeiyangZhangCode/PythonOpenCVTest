@@ -192,24 +192,40 @@ def control_communication(ctl_order, qin, qout, q_ci):
     if falling_state == 0xfd and laser_front_dis == 0xfffd and laser_back_dis == 0xfffd:
         get_state = 98
 
+    print(laser_front_dis, laser_back_dis, falling_state)
+
     return get_state
 
 # # 校正偏航角
 # def correct_yaw(now_yaw, target_yaw, cmd_56, q_v2a, qin, q_i2a, qout, q_ci, file_address):
-#     global rec_side_left, rec_side_right
+#     global rec_side_left, rec_side_right, ctl_order
 #
 #     get_state = 0
 #     diff_cam_imu = 0.0
 #     rot_yaw = now_yaw - target_yaw
 #     target_count = 0
 #
+#     cam_yaw = dis_left = dis_right = side_l = side_r = imu_roll = imu_pitch = imu_yaw = -999.9
+#     num_front = 0
+#     dis_front = [-999.9]
+#
 #     # 等待视觉测距稳定
 #     for i in range(0, 3, 1):
-#         get_state, cam_yaw, dis_left, dis_right, imu_roll, imu_pitch, imu_yaw = control_communication(hex_allStop, q_v2a, qin, q_i2a, qout, q_ci)
+#         get_state = control_communication(ctl_order, qin, qout, q_ci)
 #         if get_state > 0:
-#             get_error, cam_yaw, dis_left, dis_right, imu_roll, imu_pitch, imu_yaw = control_communication(
-#                 hex_allStop, q_v2a, qin, q_i2a, qout, q_ci)
+#             get_error = control_communication(ctl_order, qin, qout, q_ci)
 #             return get_state
+#         if not q_v2a.empty():
+#             dis_list = q_v2a.get()
+#             cam_yaw = dis_list[0]
+#             dis_left = dis_list[1]
+#             dis_right = dis_list[2]
+#             num_front = dis_list[3]
+#
+#         if not q_i2a.empty():
+#             imu_roll, imu_pitch, imu_yaw = q_i2a.get()
+#             imu_yaw = -imu_yaw
+#
 #         if dis_left != -999.9:
 #             rec_side_left.append(dis_left)
 #         if dis_right != -999.9:
@@ -951,8 +967,8 @@ def autocontrol_run(q_v2a, q_i2a, qin, qout, q_ci, file_address):
         no_feedBack = False
         is_oneAction = True
 
-        img_test = cv2.imread('./part.jpg')
-        cv2.imshow('Keyboard', img_test)
+        # img_test = cv2.imread('./part.jpg')
+        # cv2.imshow('Keyboard', img_test)
         while is_oneAction:
             rgb_show_data = np.zeros((360, 640), np.uint8)
 
@@ -969,12 +985,31 @@ def autocontrol_run(q_v2a, q_i2a, qin, qout, q_ci, file_address):
                 else:
                     str_vision += '   N/A'
                 # print('Version:' + str_vision)
+            else:
+                time.sleep(0.02)
+                if not q_v2a.empty():
+                    dis_list = q_v2a.get()
+                    cam_yaw = dis_list[0]
+                    dis_left = dis_list[1]
+                    dis_right = dis_list[2]
+                    num_front = dis_list[3]
+                    str_vision = str(cam_yaw) + '  ' + str(dis_left) + '  ' + str(dis_right)
+                    if num_front > 0:
+                        dis_front = dis_list[4]
+                        str_vision += '   ' + str(dis_front[0])
+                    else:
+                        str_vision += '   N/A'
+                    # print('Version:' + str_vision)
+                else:
+                    str_vision = 'N/A'
 
             if not q_i2a.empty():
                 imu_roll, imu_pitch, imu_yaw = q_i2a.get()
                 imu_yaw = -imu_yaw
                 str_imu = str(imu_roll) + '  ' + str(imu_pitch) + '  ' + str(imu_yaw)
                 # print('IMU:' + str_imu)
+            else:
+                str_imu = 'N/A'
 
             cv2.putText(rgb_show_data, str_vision, (0, int(360 * 2/ 5) - 5), cv2.FONT_HERSHEY_COMPLEX, 0.4, 255, 1)
             cv2.putText(rgb_show_data, str_imu, (0, int(360 * 4 / 5) - 5), cv2.FONT_HERSHEY_COMPLEX, 0.4, 255, 1)

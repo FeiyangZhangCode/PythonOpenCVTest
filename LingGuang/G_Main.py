@@ -15,11 +15,11 @@ import numpy as np
 
 
 # IMU串口信息、主板串口通信
-imu_com = '/dev/ttyUSB0'
+imu_com = '/dev/ttyTHS1'
 imu_baud = 9600
 imu_timeout = 0.05
 
-com_id = '/dev/ttyTHS1'
+com_id = '/dev/ttyUSB0'
 com_bit_rate = 115200
 com_time_out = 0.1
 
@@ -317,6 +317,7 @@ def send_fail_msg(qout):
         ATTR_STATE_DISTANCE_D, 0xfffd,
         ATTR_STATE_TOUCH, 0xff, 0xfd,
     ]
+
     qout.put(msg)
     return
 
@@ -325,27 +326,37 @@ def communication_thread(ser, qin, qout):
     need_handshake = True
     fail_cnt = 0
     while True:
-        # 握手
-        if need_handshake:
-            ret = HandShake(ser)
-            if ret == 0:
-                need_handshake = False
-                fail_cnt = 0
-            else:
-                send_fail_msg(qin)
-                time.sleep(0.15)
-                continue
+        # # 握手
+        # if need_handshake:
+        #     ret = HandShake(ser)
+        #     if ret == 0:
+        #         need_handshake = False
+        #         fail_cnt = 0
+        #     else:
+        #         send_fail_msg(qin)
+        #         time.sleep(0.15)
+        #         continue
+        #
+        # # 获取状态
+        # msgs, status = get_status(ser)
+        #
+        # # 判断状态
+        # if status < 0 or len(msgs) == 0:
+        #     fail_cnt += 1
+        #     if fail_cnt > 10:
+        #         send_fail_msg(qin)
+        #         need_handshake = True
+        #     continue
 
-        # 获取状态
-        msgs, status = get_status(ser)
-
-        # 判断状态
-        if status < 0 or len(msgs) == 0:
-            fail_cnt += 1
-            if fail_cnt > 10:
-                send_fail_msg(qin)
-                need_handshake = True
-            continue
+        # 暂时塞进写死的反馈信息
+        msgs = [
+            0xaa, 0xf1, 0x1, 0,
+            ATTR_STATE_WATER, 0x01, 0x64,
+            ATTR_STATE_BATTERY, 0x01, 0x64,
+            ATTR_STATE_DISTANCE_U, 0x03e8,
+            ATTR_STATE_DISTANCE_D, 0x03e8,
+            ATTR_STATE_TOUCH, 0x01, 0x00,
+        ]
 
         # 将接收到的信息放入队列
         qin.put(msgs)
@@ -479,7 +490,7 @@ if __name__ == '__main__':
 
     mp.set_start_method(method='spawn')  # init
     processes = []
-    lock = mp.Lock()
+    # lock = mp.Lock()
     # 深度相机测距，偏航、左距离、右距离给自动控制，视觉偏航角给imu
     queue_vision2action = mp.Queue(maxsize=2)
     queue_vision2imu = mp.Queue(maxsize=2)
@@ -493,9 +504,13 @@ if __name__ == '__main__':
     queue_imu2action = mp.Queue(maxsize=2)
 
     # 创建队列
-    qout = queue.Queue(3)
-    qin = queue.Queue(3)
-    communication_init(qin, qout)
+    # qout = queue.Queue(3)
+    # qin = queue.Queue(3)
+    # communication_init(qin, qout)
+    qout = mp.Queue(maxsize=2)
+    qin = mp.Queue(maxsize=2)
+    processes.append(mp.Process(target=communication_init, args=(qin, qout)))
+
 
     # 深度相机测距
     processes.append(mp.Process(target=G_RGBD.distance_get, args=(queue_vision2action, queue_vision2imu)))
