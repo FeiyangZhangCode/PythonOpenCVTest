@@ -1,0 +1,19 @@
+# 机身尺寸、光伏板尺寸
+vehicle_left = int(para_lines[0].strip('\n'))
+vehicle_right = int(para_lines[1].strip('\n'))
+vehicle_front = int(para_lines[2].strip('\n'))
+vehicle_front_falling = int(para_lines[3].strip('\n'))
+vehicle_width = vehicle_left + vehicle_right
+# 校正阈值(度或毫米)
+wash_thre_yaw = float(para_lines[4].strip('\n'))
+correct_thre_yaw = float(para_lines[5].strip('\n'))
+wash_thre_deviation = float(para_lines[6].strip('\n'))
+correct_thre_deviation = float(para_lines[7].strip('\n'))
+# 机器速率
+straight_speed = float(para_lines[8].strip('\n'))
+angular_speed = float(para_lines[9].strip('\n'))
+# 运行速度
+int_washSpeed = int(para_lines[10].strip('\n'))
+int_moveSpeed = int(para_lines[11].strip('\n'))
+int_turnSpeed = int(para_lines[12].strip('\n'))
+times_Lturn = int(para_lines[13].strip('\n'))

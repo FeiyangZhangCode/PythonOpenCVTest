@@ -3,12 +3,19 @@ import time
 import threading
 import queue
 import datetime
-import numpy as np
-import binascii
+from pynput import keyboard
+from pynput.keyboard import Listener,  Key
 
-com_id = 'COM3'
+
+# com_id = 'COM3'
+# com_id = '/dev/ttyTHS1'
+com_id = '/dev/ttyUSB0'
 com_bit_rate = 115200
-com_time_out = 0.1
+com_time_out = 0.3
+
+recv_delay = 0.01
+send_delay = 0.2
+fail_cnt_thr = 5
 
 ATTR_STATE_RSSI = (1 << 5 | 0)  # 信号强度
 ATTR_STATE_UPDOWN_LOAD = (1 << 5 | 1)  # 提升负荷
@@ -24,7 +31,6 @@ ATTR_STATE_NTC = (1 << 5 | 10)  # NTC温度
 ATTR_STATE_TOUCH = (1 << 5 | 11)  # 防跌落状态 STATE_ON: 至少有一个防跌落触发
 ATTR_STATE_TIME_ONCE = (1 << 5 | 12)  # 本次工作时长
 ATTR_STATE_TIME_SUM = (1 << 5 | 13)  # 累计工作时长
-ATTR_STATE_VISION_STATE = (1 << 5 | 14)  # 视觉工作状态
 
 ATTR_CONTROL_MODE = (2 << 5 | 0)  # 运行模式
 ATTR_CONTROL_BOOST_STATE = (2 << 5 | 1)  # 推进使能
@@ -103,7 +109,7 @@ def xdata_CRC8(data):
 
 
 # 串口发送命令，自动计算长度，并添加crc。 然后接收并返回响应
-def com_send_and_recv_resp(ser, msg,resp_len):
+def com_send_and_recv_resp(ser, msg, resp_len):
     # 计算并填充长度
     length = len(msg) + 1
     msg[3] = length
@@ -120,9 +126,9 @@ def com_send_and_recv_resp(ser, msg,resp_len):
         return None, -1
 
     # 读取信息
-    if resp_len==0:
+    if resp_len == 0:
         hex_receive = ser.read(length)
-    elif resp_len>0:
+    elif resp_len > 0:
         hex_receive = ser.read(resp_len)
     else:
         hex_receive = ser.readline()
@@ -162,7 +168,7 @@ def HandShake(ser):
     shake = head + msg_values
 
     # 发送收握手信息, 返回响应
-    hex_receive, status = com_send_and_recv_resp(ser, shake,-1)
+    hex_receive, status = com_send_and_recv_resp(ser, shake, -1)
 
     # 判断状态
     if status != 0:
@@ -209,10 +215,10 @@ def para_set_resp(msg):
         bh = msg[i + 1]
         bl = msg[i + 2]
 
-        if bh!=0 or bl!=0:
+        if bh != 0 or bl != 0:
             error = [cmd, hex(bh << 8 | bl)]
             ret.append(error)
-            print("ctl error:",error)
+            print("ctl error:", error)
     return ret
 
 
@@ -227,7 +233,7 @@ def get_status(ser):
     msg = head + msg
 
     # 发送信息, 返回响应
-    hex_receive, status = com_send_and_recv_resp(ser, msg,0)
+    hex_receive, status = com_send_and_recv_resp(ser, msg, 0)
 
     # 判断状态
     if status != 0:
@@ -253,8 +259,55 @@ def get_status(ser):
     return msgs, 0
 
 
+# 获取速度
+def get_speed(ser):
+    head = [0xaa, 0x01, 0x2, 0]
+    msg = [
+        ATTR_SPEED_UP,0,0,  # 速度 - 上行
+        ATTR_SPEED_DOWN,0,0,  # 速度 - 下行
+        ATTR_SPEED_ADHESION,0,0,  # 速度 - 吸附
+        ATTR_SPEED_STEAM,0,0,  # 速度 - 水汽
+        ATTR_SPEED_CLEAN,0,0,  # 速度 - 清洗
+        ATTR_SPEED_U_SPRAY1,0,0,  # 速度 - 上行喷水1
+        ATTR_SPEED_U_SPRAY2,0,0,  # 速度 - 上行喷水2
+        ATTR_SPEED_D_SPRAY1,0,0,  # 速度 - 下行喷水1
+        ATTR_SPEED_D_SPRAY2,0,0,  # 速度 - 下行喷水2
+    ]
+
+    # 合并消息
+    msg = head + msg
+
+    # 发送信息, 返回响应
+    hex_receive, status = com_send_and_recv_resp(ser, msg, 0)
+
+    # 判断状态
+    if status != 0:
+        print("get_speed error=%d" % (status))
+        return None, status
+
+    # 判断长度
+    if hex_receive[3] != len(hex_receive):
+        print("get_speed recv len error")
+        return None, -3
+
+    # 头判断
+    if hex_receive[1] != 0xf1 :
+        print("get_speed recv len error")
+        return None, -4
+
+    # 截取消息
+    hex_msg = list(hex_receive[4:-1])
+
+    # 解释消息
+    msgs = para_msg(hex_msg)
+
+    return msgs, 0
+
+
 # 发送控制命令
-set_ctl_cnt=0
+set_ctl_cnt = 0
+
+#发送控制命令
 def set_ctl(ser, msg):
     # 握手的头及消息
     head = [0xaa, 0x02, 0x4, 0]
@@ -267,7 +320,7 @@ def set_ctl(ser, msg):
     send_msg = head + msg
 
     # 发送并接收响应
-    hex_receive, status = com_send_and_recv_resp(ser, send_msg,0)
+    hex_receive, status = com_send_and_recv_resp(ser, send_msg, 0)
 
     # 判断状态
     if status != 0:
@@ -279,34 +332,38 @@ def set_ctl(ser, msg):
         print("set_ctl recv error")
         return None, -4
 
-    global set_ctl_cnt
-    set_ctl_cnt += 1
-    print(datetime.datetime.now(),"set ctl %d"%(set_ctl_cnt),msg)
-    #print('[{}]'.format(', '.join(hex(x) for x in list(msg))))
-    #print('[{}]\n'.format(', '.join(hex(x) for x in list(hex_receive))))
+    #global set_ctl_cnt
+    #set_ctl_cnt += 1
+    #print(datetime.datetime.now(), "set ctl %d" % (set_ctl_cnt), msg)
+    # print('[{}]'.format(', '.join(hex(x) for x in list(msg))))
+    print('[{}]\n'.format(', '.join(hex(x) for x in list(hex_receive))))
 
     # 截取消息
     hex_msg = list(hex_receive[4:-1])
 
-    #hex_msg[1]=0xff
-    #hex_msg[2]=0xfc
+    # hex_msg[1]=0xff
+    # hex_msg[2]=0xfc
 
     # 解释消息,判断是否有错误码
     msgs = para_set_resp(hex_msg)
-    return [hex_msg,msgs], 0
+    return [hex_msg, msgs], 0
 
 
 # 通讯失败的时候，往队列发送获取失败信息
 def send_fail_msg(qout):
-    msg = [
-        ATTR_STATE_WATER, 0xff, 0xfd,
-        ATTR_STATE_BATTERY, 0xff, 0xfd,
-        ATTR_STATE_DISTANCE_U, 0xfffd,
-        ATTR_STATE_DISTANCE_D, 0xfffd,
-        ATTR_STATE_TOUCH, 0xff, 0xfd,
-    ]
-    qout.put(msg)
-    return
+    # msg = [
+    #     ATTR_STATE_WATER, 0xff, 0xfd,
+    #     ATTR_STATE_BATTERY, 0xff, 0xfd,
+    #     ATTR_STATE_DISTANCE_U, 0xfffd,
+    #     ATTR_STATE_DISTANCE_D, 0xfffd,
+    #     ATTR_STATE_TOUCH, 0xff, 0xfd,
+    # ]
+    msg = [["offline"]]
+    try:
+        qout.put(msg, timeout=1)
+    except Exception as e:
+        print(e)
+
 
 
 def communication_thread(ser, qin, qout):
@@ -319,9 +376,10 @@ def communication_thread(ser, qin, qout):
             if ret == 0:
                 need_handshake = False
                 fail_cnt = 0
+                #get_speed(ser)
             else:
                 send_fail_msg(qin)
-                time.sleep(0.15)
+                time.sleep(recv_delay)
                 continue
 
         # 获取状态
@@ -330,19 +388,23 @@ def communication_thread(ser, qin, qout):
         # 判断状态
         if status < 0 or len(msgs) == 0:
             fail_cnt += 1
-            if fail_cnt > 10:
+            if fail_cnt > fail_cnt_thr:
                 send_fail_msg(qin)
                 need_handshake = True
             continue
 
         # 将接收到的信息放入队列
-        qin.put(msgs)
+        try:
+            qin.put(msgs, timeout=1)
+        except Exception as e:
+            print(e)
 
         # 查看是否需要发送控制命令
         while qout.qsize() >= 1:
             ctl_msg = qout.get()
+            #print(ctl_msg)
             set_ctl(ser, ctl_msg)
-        time.sleep(0.2)
+        time.sleep(recv_delay)
         continue
 
 
@@ -362,35 +424,130 @@ def communication_init(qin, qout):
 
     return 0
 
-import cv2
-if __name__ == '__main__':
-    # 创建队列
-    qout = queue.Queue(3)
-    qin = queue.Queue(3)
 
+#键盘监听
+def keyboardListener(on_press):
+    with Listener(on_press=on_press) as listener:
+        listener.join()
+
+
+# 创建队列
+qout = queue.Queue(3)
+qin = queue.Queue(3)
+
+#按键处理
+def on_press(key):
+    ctl = []
+
+    try:
+        #前进
+        if key == keyboard.Key.up or key == keyboard.KeyCode.from_char('w'):
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 2, 50,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 3, 50,  # 右履带
+            ]
+        #后退
+        elif key == keyboard.Key.down or key == keyboard.KeyCode.from_char('s'):
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 3, 50,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 3, 50,  # 右履带
+            ]
+        #左旋
+        elif key == keyboard.Key.left or key == keyboard.KeyCode.from_char('a'):
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 3, 50,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 2, 50,  # 右履带
+            ]
+        #右旋
+        elif key == keyboard.Key.right or key == keyboard.KeyCode.from_char('d'):
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 2, 50,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 3, 50,  # 右履带
+            ]
+
+        #停止
+        elif key == keyboard.KeyCode.from_char('q') or key == keyboard.KeyCode.from_char('space'):
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+        # 吸附开
+        elif hasattr(key, 'vk') and (key.vk ==49 or key.vk == 97):
+             ctl = [
+                ATTR_CONTROL_ADHESION, 1, 50,  # 吸附开
+            ]
+        # 吸附关1
+        elif hasattr(key, 'vk') and (key.vk ==50 or key.vk == 98):
+            ctl = [
+                ATTR_CONTROL_ADHESION, 0, 0,  # 吸附关
+            ]
+        # 清洗开
+        elif hasattr(key, 'vk') and (key.vk ==51 or key.vk == 99):
+            ctl = [
+                ATTR_CONTROL_CLEAN, 1, 50,  # 清洗开
+            ]
+        # 清洗关
+        elif hasattr(key, 'vk') and (key.vk ==52 or key.vk == 100):
+            ctl = [
+                ATTR_CONTROL_CLEAN, 0, 0,  # 清洗关
+            ]
+        # 水循环开
+        elif hasattr(key, 'vk') and (key.vk ==53 or key.vk == 101):
+            ctl = [
+                ATTR_CONTROL_WATER, 1, 50,  # 水循环开
+            ]
+        # 水循环关
+        elif hasattr(key, 'vk') and (key.vk ==54 or key.vk == 102):
+            ctl = [
+                ATTR_CONTROL_WATER, 0, 0,  # 水循环关
+            ]
+    except AttributeError:
+        print('special key {0} pressed'.format(key))
+        return
+
+    #没有命令
+    if len(ctl)<=0:
+        return
+    else:
+        print(ctl)
+
+    #发送控制命令
+    try:
+        qout.put(ctl, timeout=1)
+    except Exception as e:
+        print(e)
+
+    return
+
+
+if __name__ == '__main__':
+    #通讯线程初始化
     communication_init(qin, qout)
 
-    # img_test = cv2.imread('./part.jpg')
-    # cv2.imshow('Test', img_test)
+    #键盘按钮监控
+    keyboardListener(on_press)
 
+    #循环接收并打印 输入消息队列
     recv_cnt = 0
     while True:
-        #处理接收队列信息
+        # 处理接收队列信息
         while qin.qsize() >= 1:
             msg = qin.get()
-            recv_cnt+=1
-            print(datetime.datetime.now(),"recv %d:"%recv_cnt,msg)
+            recv_cnt += 1
+            #print(datetime.datetime.now(), "recv %d:" % recv_cnt, msg)
 
-        #等待键盘控制
-        #k_input = cv2.waitKey(200) & 0xFF
-        #if k_input == ord('w'):
-        ctl = [
-            ATTR_CONTROL_ADHESION, 1, 75,  # 吸附
-            ATTR_CONTROL_CLEAN, 1, 75,  # 清洗系统
-            ATTR_CONTROL_WATER, 0, 0,  # 水循环系统
-            ATTR_CONTROL_CATERPILLA_LEFT, 1, 50,  # 左履带
-            ATTR_CONTROL_CATERPILLA_RIGHT, 1, 50,  # 右履带
-        ]
-        qout.put(ctl)
-        time.sleep(0.2)
+        # 等待键盘控制
+        # ctl = [
+        #     ATTR_CONTROL_ADHESION, 1, 75,  # 吸附
+        #     ATTR_CONTROL_CLEAN, 1, 75,  # 清洗系统
+        #     ATTR_CONTROL_WATER, 0, 0,  # 水循环系统
+        #     ATTR_CONTROL_CATERPILLA_LEFT, 1, 50,  # 左履带
+        #     ATTR_CONTROL_CATERPILLA_RIGHT, 1, 50,  # 右履带
+        # ]
+        # try:
+        #     qout.put(ctl, timeout=1)
+        # except Exception as e:
+        #     print(e)
+
+        time.sleep(send_delay)
         continue
