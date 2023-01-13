@@ -11,31 +11,37 @@ import multiprocessing as mp
 import JY61
 import G_Action
 import G_RGBD
+import cv2
+import numpy as np
+import math
 
 
 # 读取参数
 file_model = open('./Parameters.txt', 'r', encoding='utf-8')
 para_lines = file_model.readlines()
 file_model.close()
-# 机身尺寸、光伏板尺寸
-vehicle_left = int(para_lines[0].strip('\n'))
-vehicle_right = int(para_lines[1].strip('\n'))
-vehicle_front = int(para_lines[2].strip('\n'))
-vehicle_front_falling = int(para_lines[3].strip('\n'))
-vehicle_width = vehicle_left + vehicle_right
-# 校正阈值(度或毫米)
-wash_thre_yaw = float(para_lines[4].strip('\n'))
-correct_thre_yaw = float(para_lines[5].strip('\n'))
-wash_thre_deviation = float(para_lines[6].strip('\n'))
-correct_thre_deviation = float(para_lines[7].strip('\n'))
-# 机器速率
-straight_speed = float(para_lines[8].strip('\n'))
-angular_speed = float(para_lines[9].strip('\n'))
-# 运行速度
-int_washSpeed = int(para_lines[10].strip('\n'))
-int_moveSpeed = int(para_lines[11].strip('\n'))
-int_turnSpeed = int(para_lines[12].strip('\n'))
-times_Lturn = int(para_lines[13].strip('\n'))
+# # 机身尺寸、光伏板尺寸
+# vehicle_left = int(para_lines[0].strip('\n'))
+# vehicle_right = int(para_lines[1].strip('\n'))
+# vehicle_front = int(para_lines[2].strip('\n'))
+# vehicle_front_falling = int(para_lines[3].strip('\n'))
+# vehicle_width = vehicle_left + vehicle_right
+# # 校正阈值(度或毫米)
+# wash_thre_yaw = float(para_lines[4].strip('\n'))
+# correct_thre_yaw = float(para_lines[5].strip('\n'))
+# wash_thre_deviation = float(para_lines[6].strip('\n'))
+# correct_thre_deviation = float(para_lines[7].strip('\n'))
+# # 机器速率
+# straight_speed = float(para_lines[8].strip('\n'))
+# angular_speed = float(para_lines[9].strip('\n'))
+# # 运行速度
+# int_washSpeed = int(para_lines[10].strip('\n'))
+# int_moveSpeed = int(para_lines[11].strip('\n'))
+# int_turnSpeed = int(para_lines[12].strip('\n'))
+# # Times
+# times_Lturn = int(para_lines[13].strip('\n'))
+# times_GoBack = int(para_lines[14].strip('\n'))
+# times_ChangeLine = int(para_lines[15].strip('\n'))
 
 
 imu_com = '/dev/ttyTHS1'
@@ -45,7 +51,7 @@ imu_timeout = 0.05
 
 # com_id = 'COM8'
 # com_id = '/dev/ttyTHS1'
-com_id = '/dev/ttyUSB1'
+com_id = '/dev/ttyUSB0'
 com_bit_rate = 115200
 com_time_out = 0.2
 
@@ -117,6 +123,8 @@ V_BASIC = [
     ATTR_SPEED_D_SPRAY1,  # 速度 - 下行喷水1
     ATTR_SPEED_D_SPRAY2,  # 速度 - 下行喷水2
 
+
+    ATTR_CONTROL_UPDOWN,
     ATTR_CONTROL_ADHESION,  # 吸附
     ATTR_CONTROL_CLEAN,  # 清洗系统
     ATTR_CONTROL_WATER,  # 水循环系统
@@ -165,7 +173,7 @@ def imu_get(q_i2v, q_i2a, q_v2i, q_c):
                             print('IMU start')
                             init_roll = send_list[0]
                             init_pitch = send_list[1]
-                            print('Init Roll:' + init_roll + '  Init Pitch:' + init_pitch)
+                            print('Init Roll:' + str(init_roll) + '  Init Pitch:' + str(init_pitch))
                         else:
                             send_list[0] = send_list[0] - init_roll
                             send_list[1] = send_list[1] - init_pitch
@@ -174,6 +182,32 @@ def imu_get(q_i2v, q_i2a, q_v2i, q_c):
                             q_i2v.get() if q_i2v.qsize() > 1 else time.sleep(0.005)
                             q_i2a.put(send_list)
                             q_i2a.get() if q_i2a.qsize() > 1 else time.sleep(0.005)
+
+                        # rgb_show_line = np.zeros((360, 360), np.uint8)
+                        # half_width = 180
+                        # half_height = 180
+                        # imu_yaw = send_list[2]
+                        # yaw_sin = math.sin(math.radians(abs(imu_yaw)))
+                        # yaw_cos = math.cos(math.radians(abs(imu_yaw)))
+                        # if -90 <= imu_yaw < 0:
+                        #     temp_x = int(half_width - yaw_sin * (half_height * 0.5))
+                        #     temp_y = int(half_height - yaw_cos * (half_height * 0.5))
+                        # elif 0 <= imu_yaw <= 90:
+                        #     temp_x = int(half_width + yaw_sin * (half_height * 0.5))
+                        #     temp_y = int(half_height - yaw_cos * (half_height * 0.5))
+                        # elif -180 <= imu_yaw < -90:
+                        #     temp_x = int(half_width - yaw_sin * (half_height * 0.5))
+                        #     temp_y = int(half_height - yaw_cos * (half_height * 0.5))
+                        # elif 90 < imu_yaw <= 180:
+                        #     temp_x = int(half_width + yaw_sin * (half_height * 0.5))
+                        #     temp_y = int(half_height - yaw_cos * (half_height * 0.5))
+                        # else:
+                        #     temp_x = half_width
+                        #     temp_y = half_height - (half_height * 0.5)
+                        # cv2.line(rgb_show_line, (half_width, half_height), (temp_x, temp_y), 255, 3)
+                        # str_show = str(imu_yaw)
+                        # cv2.putText(rgb_show_line, str_show, (0, 100), cv2.FONT_HERSHEY_COMPLEX, 0.4, 255, 1)
+                        # cv2.imshow('IMU', rgb_show_line)
                     else:
                         sav_mess = ('NoneType;' + str_imu + ';\n')
                         print(sav_mess)
@@ -182,6 +216,7 @@ def imu_get(q_i2v, q_i2a, q_v2i, q_c):
                     sav_mess = ('IMU error;' + str_imu + ';\n')
                     print(sav_mess)
                     se_i.flushOutput()
+            # cv2.waitKey(1)
 
             if not q_v2i.empty() and not q_c.empty():
                 yaw_c = q_v2i.get()
@@ -325,7 +360,7 @@ def get_status(ser):
     # 握手的头及消息
     head = [0xaa, 0x01, 0x1, 0]
     msg = [ATTR_STATE_WATER, 0, 0, ATTR_STATE_BATTERY, 0, 0, ATTR_STATE_DISTANCE_U, 0, 0, ATTR_STATE_DISTANCE_D, 0, 0,
-           ATTR_STATE_TOUCH, 0, 0]
+           ATTR_STATE_TOUCH, 0, 0,ATTR_CONTROL_UPDOWN,0,0]
 
     # 合并消息
     msg = head + msg
@@ -434,7 +469,7 @@ def set_ctl(ser, msg):
     #set_ctl_cnt += 1
     #print(datetime.datetime.now(), "set ctl %d" % (set_ctl_cnt), msg)
     # print('[{}]'.format(', '.join(hex(x) for x in list(msg))))
-    print('[{}]\n'.format(', '.join(hex(x) for x in list(hex_receive))))
+    # print('[{}]\n'.format(', '.join(hex(x) for x in list(hex_receive))))
 
     # 截取消息
     hex_msg = list(hex_receive[4:-1])
@@ -500,7 +535,7 @@ def communication_thread(ser, qin, qout):
         # 查看是否需要发送控制命令
         while qout.qsize() >= 1:
             ctl_msg = qout.get()
-            #print(ctl_msg)
+            # print(ctl_msg)
             set_ctl(ser, ctl_msg)
         time.sleep(recv_delay)
         continue
@@ -543,6 +578,30 @@ queue_imu2action = queue.Queue(2)
 
 #按键处理
 def on_press(key):
+    global para_lines
+    # 机身尺寸
+    vehicle_left = int(para_lines[0].strip('\n'))
+    vehicle_right = int(para_lines[1].strip('\n'))
+    vehicle_front = int(para_lines[2].strip('\n'))
+    vehicle_front_falling = int(para_lines[3].strip('\n'))
+    vehicle_width = vehicle_left + vehicle_right
+    # 校正阈值(度或毫米)
+    wash_thre_yaw = float(para_lines[4].strip('\n'))
+    correct_thre_yaw = float(para_lines[5].strip('\n'))
+    wash_thre_deviation = float(para_lines[6].strip('\n'))
+    correct_thre_deviation = float(para_lines[7].strip('\n'))
+    # 机器速率
+    straight_speed = float(para_lines[8].strip('\n'))
+    angular_speed = float(para_lines[9].strip('\n'))
+    # 运行速度
+    int_washSpeed = int(para_lines[10].strip('\n'))
+    int_moveSpeed = int(para_lines[11].strip('\n'))
+    int_turnSpeed = int(para_lines[12].strip('\n'))
+    # Times
+    times_Lturn = int(para_lines[13].strip('\n'))
+    times_GoBack = int(para_lines[14].strip('\n'))
+    times_ChangeLine = int(para_lines[15].strip('\n'))
+
     ctl = []
 
     try:
@@ -550,7 +609,7 @@ def on_press(key):
         if key == keyboard.Key.up or key == keyboard.KeyCode.from_char('w'):
             ctl = [
                 ATTR_CONTROL_CATERPILLA_LEFT, 2, 50,  # 左履带
-                ATTR_CONTROL_CATERPILLA_RIGHT, 3, 50,  # 右履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 2, 50,  # 右履带
             ]
         #后退
         elif key == keyboard.Key.down or key == keyboard.KeyCode.from_char('s'):
@@ -576,11 +635,52 @@ def on_press(key):
                 ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
                 ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
             ]
+        # 测试ReRead
+        elif key == keyboard.KeyCode.from_char('r'):
+            # 读取参数
+            file_model_reread = open('./Parameters.txt', 'r', encoding='utf-8')
+            para_lines = file_model_reread.readlines()
+            file_model_reread.close()
+            # 机身尺寸、光伏板尺寸
+            vehicle_left = int(para_lines[0].strip('\n'))
+            vehicle_right = int(para_lines[1].strip('\n'))
+            vehicle_front = int(para_lines[2].strip('\n'))
+            vehicle_front_falling = int(para_lines[3].strip('\n'))
+            vehicle_width = vehicle_left + vehicle_right
+            # 校正阈值(度或毫米)
+            wash_thre_yaw = float(para_lines[4].strip('\n'))
+            correct_thre_yaw = float(para_lines[5].strip('\n'))
+            wash_thre_deviation = float(para_lines[6].strip('\n'))
+            correct_thre_deviation = float(para_lines[7].strip('\n'))
+            # 机器速率
+            straight_speed = float(para_lines[8].strip('\n'))
+            angular_speed = float(para_lines[9].strip('\n'))
+            # 运行速度
+            int_washSpeed = int(para_lines[10].strip('\n'))
+            int_moveSpeed = int(para_lines[11].strip('\n'))
+            int_turnSpeed = int(para_lines[12].strip('\n'))
+            # Times
+            times_Lturn = int(para_lines[13].strip('\n'))
+            times_GoBack = int(para_lines[14].strip('\n'))
+            times_ChangeLine = int(para_lines[15].strip('\n'))
+            times_Uturn = int(para_lines[16].strip('\n'))
+
+            G_Action.ReRead()
+
+            print('Finish ReRead')
+
+        #测试停止
+        elif key == keyboard.KeyCode.from_char('e'):
+            ctl_single = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+            ret_state = G_Action.control_communication(ctl_single, qin, qout, queue_control_imu)
         #测试前进
         elif key == keyboard.KeyCode.from_char('i'):
             ctl_single = [
                 ATTR_CONTROL_CATERPILLA_LEFT, 2, int_moveSpeed,  # 左履带
-                ATTR_CONTROL_CATERPILLA_RIGHT, 3, int_moveSpeed,  # 右履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 2, int_moveSpeed,  # 右履带
             ]
             ret_state = G_Action.control_communication(ctl_single, qin, qout, queue_control_imu)
 
@@ -619,8 +719,29 @@ def on_press(key):
                 ATTR_CONTROL_CATERPILLA_RIGHT, 2, 30,  # 右履带
             ]
             ret_state = G_Action.control_communication(ctl_single, qin, qout, queue_control_imu)
+        # #测试直行
+        # elif key == keyboard.KeyCode.from_char('n'):
+        #     cam_yaw = -999.9
+        #     if not queue_vision2action.empty():
+        #         dis_list = queue_vision2action.get()
+        #         cam_yaw = dis_list[0]
+        #     else:
+        #         time.sleep(0.1)
+        #         if not queue_vision2action.empty():
+        #             dis_list = queue_vision2action.get()
+        #             cam_yaw = dis_list[0]
+        #     if cam_yaw != -999.9:
+        #         print('开始直行到边')
+        #         ret_state = G_Action.go_straight(0, int_moveSpeed, -1, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+        #     else:
+        #         print('视觉识别失败')
+        # #测试后退
+        # elif key == keyboard.KeyCode.from_char('m'):
+        #     print('开始后退')
+        #     ret_state = G_Action.go_straight(3, int_moveSpeed, times_GoBack, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+        #
         #测试校正
-        elif key == keyboard.KeyCode.from_char('n'):
+        elif key == keyboard.KeyCode.from_char('v'):
             cam_yaw = -999.9
             if not queue_vision2action.empty():
                 dis_list = queue_vision2action.get()
@@ -631,12 +752,66 @@ def on_press(key):
                     dis_list = queue_vision2action.get()
                     cam_yaw = dis_list[0]
             if cam_yaw != -999.9:
-                print('开始校正')
+                print('开始校正', str(cam_yaw))
                 ret_state = G_Action.correct_yaw(cam_yaw, 0.0, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
             else:
                 print('视觉识别失败')
-        #测试直行
+        #测试直行2
+        elif key == keyboard.KeyCode.from_char('b'):
+            cam_yaw = -999.9
+            if not queue_vision2action.empty():
+                dis_list = queue_vision2action.get()
+                cam_yaw = dis_list[0]
+            else:
+                time.sleep(0.1)
+                if not queue_vision2action.empty():
+                    dis_list = queue_vision2action.get()
+                    cam_yaw = dis_list[0]
+            if cam_yaw != -999.9:
+                print('开始直行2')
+                ret_state = G_Action.go_straight(4, int_moveSpeed, -1, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+                ctl = [
+                    ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                    ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+                ]
+            else:
+                print('视觉识别失败')
+        # 测试TurnAround
         elif key == keyboard.KeyCode.from_char('m'):
+            print('开始U型Turn Around')
+            ret_state = G_Action.turn_around(True, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+        #测试L型Left
+        elif key == keyboard.KeyCode.from_char('n'):
+            print('开始L型Left')
+            ret_state = G_Action.l_turn(True, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+        #测试Open Clean
+        elif key == keyboard.KeyCode.from_char('h'):
+            print('Open clean')
+            G_Action.clean_water(2, 0, qin, qout, queue_control_imu)
+            time.sleep(0.1)
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+        # 测试Close Clean
+        elif key == keyboard.KeyCode.from_char('g'):
+            print('Close clean')
+            G_Action.clean_water(0, 0, qin, qout, queue_control_imu)
+            time.sleep(0.1)
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+        # 测试Around
+        elif key == keyboard.KeyCode.from_char('y'):
             cam_yaw = -999.9
             if not queue_vision2action.empty():
                 dis_list = queue_vision2action.get()
@@ -647,73 +822,315 @@ def on_press(key):
                     dis_list = queue_vision2action.get()
                     cam_yaw = dis_list[0]
             if cam_yaw != -999.9:
-                print('开始直行到边')
-                ret_state = G_Action.go_straight(0, int_moveSpeed, -1, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
-            else:
-                print('视觉识别失败')
-        #测试后退
-        elif key == keyboard.KeyCode.from_char('m'):
-            cam_yaw = -999.9
-            if not queue_vision2action.empty():
-                dis_list = queue_vision2action.get()
-                cam_yaw = dis_list[0]
-            else:
-                time.sleep(0.1)
-                if not queue_vision2action.empty():
-                    dis_list = queue_vision2action.get()
-                    cam_yaw = dis_list[0]
-            if cam_yaw != -999.9:
-                print('开始后退')
-                ret_state = G_Action.go_straight(3, int_moveSpeed, 10, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
-            else:
-                print('视觉识别失败')
-        #测试L型右转
-        elif key == keyboard.KeyCode.from_char('.'):
-            cam_yaw = -999.9
-            if not queue_vision2action.empty():
-                dis_list = queue_vision2action.get()
-                cam_yaw = dis_list[0]
-            else:
-                time.sleep(0.1)
-                if not queue_vision2action.empty():
-                    dis_list = queue_vision2action.get()
-                    cam_yaw = dis_list[0]
-            if cam_yaw != -999.9:
-                print('开始L型右转')
-                ret_state = G_Action.l_turn(False, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
-            else:
-                print('视觉识别失败')
+                print('AutoAround')
+                is_left = True
 
-        # # 吸附开
-        # elif hasattr(key, 'vk') and (key.vk ==49 or key.vk == 97):
-        #      ctl = [
-        #         ATTR_CONTROL_ADHESION, 1, 50,  # 吸附开
-        #     ]
-        # # 吸附关1
-        # elif hasattr(key, 'vk') and (key.vk ==50 or key.vk == 98):
-        #     ctl = [
-        #         ATTR_CONTROL_ADHESION, 0, 0,  # 吸附关
-        #     ]
-        # # 清洗开
-        # elif hasattr(key, 'vk') and (key.vk ==51 or key.vk == 99):
-        #     ctl = [
-        #         ATTR_CONTROL_CLEAN, 1, 50,  # 清洗开
-        #     ]
-        # # 清洗关
-        # elif hasattr(key, 'vk') and (key.vk ==52 or key.vk == 100):
-        #     ctl = [
-        #         ATTR_CONTROL_CLEAN, 0, 0,  # 清洗关
-        #     ]
-        # # 水循环开
-        # elif hasattr(key, 'vk') and (key.vk ==53 or key.vk == 101):
-        #     ctl = [
-        #         ATTR_CONTROL_WATER, 1, 50,  # 水循环开
-        #     ]
-        # # 水循环关
-        # elif hasattr(key, 'vk') and (key.vk ==54 or key.vk == 102):
-        #     ctl = [
-        #         ATTR_CONTROL_WATER, 0, 0,  # 水循环关
-        #     ]
+                print('Stop')
+                time.sleep(0.1)
+                ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                 queue_control_imu)
+
+                for i in range(0, 8, 1):
+                    print('开始直行到边')
+                    ret_state = G_Action.go_straight(4, int_moveSpeed, -1, queue_vision2action, qin, queue_imu2action, qout,
+                                                     queue_control_imu)
+
+                    print('Stop')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                     queue_control_imu)
+
+                    print('开始后退')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(3, int_moveSpeed, times_GoBack, queue_vision2action, qin, queue_imu2action, qout,
+                                                     queue_control_imu)
+                    print('Stop')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                     queue_control_imu)
+                    print('开始L型Left')
+                    time.sleep(0.1)
+                    ret_state = G_Action.l_turn(is_left, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+
+                    print('Stop')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                     queue_control_imu)
+
+                    print('开始Change Line直行')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(0, int_moveSpeed, times_ChangeLine, queue_vision2action, qin,
+                                                     queue_imu2action, qout, queue_control_imu)
+
+                    print('Stop')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                     queue_control_imu)
+
+                    print('开始L型Left')
+                    time.sleep(0.1)
+                    ret_state = G_Action.l_turn(is_left, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+
+                    print('Stop')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                     queue_control_imu)
+
+                print('Finish Around')
+                ctl = [
+                    ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                    ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+                ]
+            else:
+                print('视觉识别失败')
+        # 测试AutoRun
+        elif key == keyboard.KeyCode.from_char('t'):
+            cam_yaw = -999.9
+            if not queue_vision2action.empty():
+                dis_list = queue_vision2action.get()
+                cam_yaw = dis_list[0]
+            else:
+                time.sleep(0.1)
+                if not queue_vision2action.empty():
+                    dis_list = queue_vision2action.get()
+                    cam_yaw = dis_list[0]
+            if cam_yaw != -999.9:
+                print('AutoAround')
+                is_left = True
+                is_loop = True
+                print('Stop')
+                time.sleep(0.1)
+                ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                 queue_control_imu)
+
+                print('开始直行到边')
+                ret_state = G_Action.go_straight(0, int_moveSpeed, -1, queue_vision2action, qin, queue_imu2action, qout,
+                                                 queue_control_imu)
+
+                print('Stop')
+                time.sleep(0.1)
+                ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                 queue_control_imu)
+
+                print('开始后退')
+                time.sleep(0.1)
+                ret_state = G_Action.go_straight(3, int_moveSpeed, times_GoBack, queue_vision2action, qin,
+                                                 queue_imu2action, qout,
+                                                 queue_control_imu)
+                print('Stop')
+                time.sleep(0.1)
+                ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                 queue_control_imu)
+                print('开始L型Left')
+                time.sleep(0.1)
+                ret_state = G_Action.l_turn(is_left, queue_vision2action, qin, queue_imu2action, qout,
+                                            queue_control_imu)
+
+                print('Stop')
+                time.sleep(0.1)
+                ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                 queue_control_imu)
+
+                print('开始Change Line直行')
+                time.sleep(0.1)
+                ret_state = G_Action.go_straight(0, int_moveSpeed, times_ChangeLine, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+
+                if ret_state == 0:
+                    is_left = True
+
+                elif ret_state == 1:
+                    is_left = False
+                    print('Stop')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                     queue_control_imu)
+                    print('开始后退')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(3, int_moveSpeed, times_GoBack, queue_vision2action, qin,
+                                                     queue_imu2action, qout,
+                                                     queue_control_imu)
+                    print('开始L型Left')
+                    time.sleep(0.1)
+                    ret_state = G_Action.l_turn(True, queue_vision2action, qin, queue_imu2action, qout,
+                                                queue_control_imu)
+                    print('开始L型Left')
+                    time.sleep(0.1)
+                    ret_state = G_Action.l_turn(True, queue_vision2action, qin, queue_imu2action, qout,
+                                                queue_control_imu)
+                    print('开始直行')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(0, int_moveSpeed, times_ChangeLine, queue_vision2action, qin,
+                                                     queue_imu2action, qout, queue_control_imu)
+
+                print('Stop')
+                time.sleep(0.1)
+                ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                 queue_control_imu)
+                print('开始L型Left')
+                time.sleep(0.1)
+                ret_state = G_Action.l_turn(is_left, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+                print('Stop')
+                time.sleep(0.1)
+                ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                 queue_control_imu)
+                while is_loop:
+                    if is_left:
+                        is_left = False
+                    else:
+                        is_left = True
+
+                    print('开始直行到边')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(0, int_moveSpeed, -1, queue_vision2action, qin, queue_imu2action, qout,
+                                                     queue_control_imu)
+                    print('Stop')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                     queue_control_imu)
+                    print('开始后退')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(3, int_moveSpeed, times_GoBack, queue_vision2action, qin, queue_imu2action, qout,
+                                                     queue_control_imu)
+                    print('Stop')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                     queue_control_imu)
+                    print('开始L型')
+                    time.sleep(0.1)
+                    ret_state = G_Action.l_turn(is_left, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+
+                    print('Stop')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                     queue_control_imu)
+                    print('开始直行')
+                    ret_state = G_Action.go_straight(0, int_moveSpeed, times_ChangeLine, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+
+                    if ret_state == 1:
+                        print('Stop')
+                        ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                         queue_control_imu)
+                        print('开始后退')
+                        time.sleep(0.1)
+                        ret_state = G_Action.go_straight(3, int_moveSpeed, times_GoBack, queue_vision2action, qin,
+                                                         queue_imu2action, qout,
+                                                         queue_control_imu)
+                        print('Stop')
+                        time.sleep(0.1)
+                        ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                         queue_control_imu)
+                        print('开始L型')
+                        time.sleep(0.1)
+                        ret_state = G_Action.l_turn(is_left, queue_vision2action, qin, queue_imu2action, qout,
+                                                    queue_control_imu)
+                        print('Stop')
+                        time.sleep(0.1)
+                        ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                         queue_control_imu)
+                        is_loop = False
+                        break
+
+                    print('Stop')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                     queue_control_imu)
+                    print('开始L型')
+                    time.sleep(0.1)
+                    ret_state = G_Action.l_turn(is_left, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+                    print('Stop')
+                    time.sleep(0.1)
+                    ret_state = G_Action.go_straight(5, 0, 3, queue_vision2action, qin, queue_imu2action, qout,
+                                                     queue_control_imu)
+                print('Finish')
+                ctl = [
+                    ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                    ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+                ]
+
+            else:
+                print('视觉识别失败')
+        #测试
+        elif key == keyboard.KeyCode.from_char('1'):
+            print('开始Front 50%')
+            ret_state = G_Action.test_moveing(0, 50, 10, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+        #测试
+        elif key == keyboard.KeyCode.from_char('2'):
+            print('开始Front 60%')
+            ret_state = G_Action.test_moveing(0, 60, 10, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+        #测试
+        elif key == keyboard.KeyCode.from_char('3'):
+            print('开始Front 70%')
+            ret_state = G_Action.test_moveing(0, 70, 10, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+        #测试
+        elif key == keyboard.KeyCode.from_char('4'):
+            print('开始Front 80%')
+            ret_state = G_Action.test_moveing(0, 80, 10, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+        #测试
+        elif key == keyboard.KeyCode.from_char('5'):
+            print('开始Front 90%')
+            ret_state = G_Action.test_moveing(0, 90, 10, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+        #测试
+        elif key == keyboard.KeyCode.from_char('6'):
+            print('开始Back 50%')
+            ret_state = G_Action.test_moveing(1, 50, 10, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+        #测试
+        elif key == keyboard.KeyCode.from_char('7'):
+            print('开始Back 60%')
+            ret_state = G_Action.test_moveing(1, 60, 10, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+        #测试
+        elif key == keyboard.KeyCode.from_char('8'):
+            print('开始Back 70%')
+            ret_state = G_Action.test_moveing(1, 70, 10, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+        #测试
+        elif key == keyboard.KeyCode.from_char('9'):
+            print('开始Back 80%')
+            ret_state = G_Action.test_moveing(1, 80, 10, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+        #测试
+        elif key == keyboard.KeyCode.from_char('0'):
+            print('开始Back 90%')
+            ret_state = G_Action.test_moveing(1, 90, 10, queue_vision2action, qin, queue_imu2action, qout, queue_control_imu)
+            ctl = [
+                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
+                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+            ]
+
+
     except AttributeError:
         print('special key {0} pressed'.format(key))
         return
@@ -722,7 +1139,8 @@ def on_press(key):
     if len(ctl)<=0:
         return
     else:
-        print(ctl)
+        pass
+        # print(ctl)
 
     #发送控制命令
     try:
@@ -750,6 +1168,7 @@ def vision_init(queue_vision2action, queue_vision2imu):
 
     return 0
 
+
 def imu_init(queue_imu2vision, queue_imu2action, queue_vision2imu, queue_control_imu):
     # 控制线程
     com_thread = threading.Thread(name='imu_get', target=imu_get, args=(queue_imu2vision, queue_imu2action, queue_vision2imu, queue_control_imu))
@@ -764,53 +1183,16 @@ if __name__ == '__main__':
     communication_init(qin, qout)
 
     print('Main Start')
-    # processes = []
     # 深度相机测距
-    # processes.append(mp.Process(target=G_RGBD.distance_get, args=(queue_vision2action, queue_vision2imu)))
-    # vision_init(queue_vision2action, queue_vision2imu)
-
-    # 自动运行导航
-    # processes.append(
-    #     mp.Process(target=G_Action.autocontrol_run, args=(queue_vision2action, queue_imu2action, qin, qout, queue_control_imu)))
-    autorun_init(queue_vision2action, queue_imu2action, qin, qout, queue_control_imu)
+    vision_init(queue_vision2action, queue_vision2imu)
 
     # IMU
-    # processes.append(
-    #     mp.Process(target=imu_get, args=(
-    #         queue_imu2vision, queue_imu2action, queue_vision2imu, queue_control_imu)))
     imu_init(queue_imu2vision, queue_imu2action, queue_vision2imu, queue_control_imu)
 
-    # for process in processes:
-    #     process.daemon = True
-    #     process.start()
-    # for process in processes:
-    #     process.join()
     print('Keyboard')
     #键盘按钮监控
     keyboardListener(on_press)
 
-
-    #循环接收并打印 输入消息队列
-    # recv_cnt = 0
-    # while True:
-    #     # 处理接收队列信息
-    #     while qin.qsize() >= 1:
-    #         msg = qin.get()
-    #         recv_cnt += 1
-    #         #print(datetime.datetime.now(), "recv %d:" % recv_cnt, msg)
-    #
-    #     # 等待键盘控制
-    #     # ctl = [
-    #     #     ATTR_CONTROL_ADHESION, 1, 75,  # 吸附
-    #     #     ATTR_CONTROL_CLEAN, 1, 75,  # 清洗系统
-    #     #     ATTR_CONTROL_WATER, 0, 0,  # 水循环系统
-    #     #     ATTR_CONTROL_CATERPILLA_LEFT, 1, 50,  # 左履带
-    #     #     ATTR_CONTROL_CATERPILLA_RIGHT, 1, 50,  # 右履带
-    #     # ]
-    #     # try:
-    #     #     qout.put(ctl, timeout=1)
-    #     # except Exception as e:
-    #     #     print(e)
-    #
-    #     time.sleep(send_delay)
-    #     continue
+    # 自动运行导航
+    # autorun_init(queue_vision2action, queue_imu2action, qin, qout, queue_control_imu)
+    # G_Action.autocontrol_run(queue_vision2action, queue_imu2action, qin, qout, queue_control_imu)

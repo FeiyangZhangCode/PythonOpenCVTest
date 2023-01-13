@@ -31,30 +31,6 @@ def realsense_thread(queue_image, show_deth_image):
     frame_cnt = 0
     while True:
         start_time = time.time()
-        if queue_image.qsize() >= 1:
-            time.sleep(0.005)
-            continue
-
-        color_intrin, depth_intrin, img_color, img_depth, aligned_depth_frame, vtx = get_aligned_images()
-
-        # 深度图转换及显示
-        if show_deth_image:
-            colorizer = rs.colorizer()
-            depth_colormap = np.asanyarray(colorizer.colorize(aligned_depth_frame).get_data())
-            cv2.imshow('depth', depth_colormap)
-            cv2.waitKey(1)
-
-        frame_cnt += 1
-        if frame_cnt > 10:
-            queue_image.put([img_color, img_depth, vtx])
-        time.sleep(0.001)
-        # print('realsense_thread cap_proc =%.2f\n' % ((time.time() - start_time) * 1000))
-
-
-def realsense_threadf(queue_image, show_deth_image):
-    frame_cnt = 0
-    while True:
-        start_time = time.time()
         frame = get_frames()
 
         if queue_image.qsize() >= 1:
@@ -890,7 +866,7 @@ def yaw_and_line_detect_thread(queue_line, install_height, Lthr, Hthr, Xthr, Zth
             continue
 
         # 计算正前方的边界距离
-        borders = cal_front_border(img_color,masks_flag, vtx,install_height, Hthr)
+        # borders = cal_front_border(img_color,masks_flag, vtx,install_height, Hthr)
 
 
         # 计算直线到mask的距离
@@ -918,11 +894,11 @@ def yaw_and_line_detect_thread(queue_line, install_height, Lthr, Hthr, Xthr, Zth
             send_list.append(-999.9)
         else:
             send_list.append(ret[5])
-        if len(borders) == 0:
-            send_list.append(0)
-        else:
-            send_list.append(len(borders))
-            send_list.append(borders)
+        # if len(borders) == 0:
+        #     send_list.append(0)
+        # else:
+        #     send_list.append(len(borders))
+        #     send_list.append(borders)
 
         q_v2i.put(yaw)
         q_v2i.get() if q_v2i.qsize() > 1 else time.sleep(0.001)
