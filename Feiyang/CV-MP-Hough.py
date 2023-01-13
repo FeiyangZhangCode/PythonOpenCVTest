@@ -6,12 +6,9 @@ import multiprocessing as mp
 import numpy as np
 import os
 import CVFunc
-import INA219
-import sys
 import signal
 import serial
 import binascii
-import smbus
 import MPU6050
 import math
 

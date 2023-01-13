@@ -7,7 +7,6 @@ import numpy as np
 import os
 import CVFunc
 # import INA219
-import sys
 import signal
 import serial
 import binascii

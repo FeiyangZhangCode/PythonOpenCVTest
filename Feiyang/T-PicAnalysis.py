@@ -16,7 +16,7 @@ def getDist_P2P(x1_d, y1_d, x2_d, y2_d):
 
 
 if __name__ == '__main__':
-    rgb_org = cv2.imread('./TestData/C0-112445-864513.jpg')
+    rgb_org = cv2.imread('../TestData/C0-112445-864513.jpg')
 
     # can_min = cv2.Canny(rgb_org, 40, 150)
     # cv2.imwrite('./TestData/Can-min.jpg', can_min)

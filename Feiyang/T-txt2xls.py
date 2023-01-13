@@ -32,6 +32,6 @@ def txt2xls(filename, xlsname):
     print(num_line)
 
 
-filename = './TestData/JY61.txt'
+filename = '../TestData/JY61.txt'
 xlsname = './TestData/JY61.xls'
 txt2xls(filename, xlsname)

@@ -2,20 +2,12 @@
 import cv2
 import time
 import datetime
-import multiprocessing as mp
 import numpy as np
-import os
 import CVFunc
 # import INA219
-import sys
-import signal
-import serial
-import binascii
 # import smbus
 # import MPU6050
-import JY61
 import math
-import xlwt
 
 
 # 计算两点间距离
@@ -43,7 +35,7 @@ time_mess = ''  # 时间信息
 
 # 获取图像及参数
 start_time = time.time()
-rgb_frame = cv2.imread('./TestData/WIN_20221107_17_38_09_Pro.jpg')
+rgb_frame = cv2.imread('../TestData/WIN_20221107_17_38_09_Pro.jpg')
 img_height = int(rgb_frame.shape[0])
 img_width = int(rgb_frame.shape[1])
 mid_height = int(img_height / 2)

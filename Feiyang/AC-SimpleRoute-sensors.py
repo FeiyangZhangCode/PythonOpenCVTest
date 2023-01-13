@@ -3,7 +3,6 @@ import serial
 import time
 import cv2
 import crcmod
-import keyboard
 import datetime
 import multiprocessing as mp
 import os

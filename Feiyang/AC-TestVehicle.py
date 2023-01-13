@@ -3,12 +3,10 @@ import numpy as np
 import CVFunc
 import signal
 import math
-import xlwt
 import binascii
 import serial
 import time
 import cv2
-import crcmod
 import keyboard
 import datetime
 import multiprocessing as mp

@@ -2,7 +2,7 @@ import datetime
 import serial
 import JY61
 import binascii
-import time
+
 
 # ACCData = [0.0] * 8
 # GYROData = [0.0] * 8
@@ -181,7 +181,7 @@ if __name__ == '__main__':
             if imu_rec:
                 str_imu = binascii.b2a_hex(imu_rec).decode()
                 # file_rec = open(file_address + 'JY61.txt', 'a')
-                file_rec = open('./TestData/JY61.txt', 'a')
+                file_rec = open('../TestData/JY61.txt', 'a')
                 str_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
                 if len(str_imu) == 66 and str_imu[0:4] == '5551':
                     jy_list = JY61.DueData(imu_rec)

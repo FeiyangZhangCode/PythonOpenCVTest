@@ -1,9 +1,5 @@
-import numpy as np
 import binascii
 import time
-import cv2
-import CVFunc
-
 
 # 读取参数
 file_model = open('./Parameters.txt', 'r', encoding='utf-8')
@@ -184,7 +180,7 @@ def control_communication(ctl_com, qin, qout, q_ci):
                 else:
                     fall_FrontLeft = False
 
-                # print(fall_FrontLeft, fall_BackLeft, fall_FrontRight, fall_BackRight)
+                print(fall_FrontLeft, fall_BackLeft, fall_FrontRight, fall_BackRight)
 
                 if (not fall_BackLeft and not fall_BackRight) and (fall_FrontLeft and fall_FrontRight) or laser_front_dis < 50:
                     get_state = 1
@@ -204,9 +200,7 @@ def control_communication(ctl_com, qin, qout, q_ci):
             # if falling_state == 0xfd and laser_front_dis == 0xfffd and laser_back_dis == 0xfffd:
             #     get_state = 98
 
-            # print(laser_front_dis, laser_back_dis, falling_state, get_state)
-            if get_state > 0:
-                print(falling_state, get_state)
+            print(laser_front_dis, laser_back_dis, falling_state, get_state)
     else:
         time.sleep(0.05)
         if not qin.empty():
@@ -259,7 +253,7 @@ def control_communication(ctl_com, qin, qout, q_ci):
                     else:
                         fall_FrontLeft = False
 
-                    # print(fall_FrontLeft, fall_BackLeft, fall_FrontRight, fall_BackRight)
+                    print(fall_FrontLeft, fall_BackLeft, fall_FrontRight, fall_BackRight)
 
                     if (not fall_BackLeft and not fall_BackRight) and (
                             fall_FrontLeft and fall_FrontRight) or laser_front_dis < 50:
@@ -281,11 +275,9 @@ def control_communication(ctl_com, qin, qout, q_ci):
                 # if falling_state == 0xfd and laser_front_dis == 0xfffd and laser_back_dis == 0xfffd:
                 #     get_state = 98
 
-                # print(laser_front_dis, laser_back_dis, falling_state, get_state)
-                print(falling_state, get_state)
+                print(laser_front_dis, laser_back_dis, falling_state, get_state)
 
     return get_state
-
 
 # 校正偏航角
 def correct_yaw(now_yaw, target_yaw, q_v2a, qin, q_i2a, qout, q_ci):
@@ -302,14 +294,12 @@ def correct_yaw(now_yaw, target_yaw, q_v2a, qin, q_i2a, qout, q_ci):
     num_front = 0
     dis_front = [-999.9]
 
-    delay_num = 0
-
-    if rot_yaw < 0:  # yaw负数，偏向左，向右旋转
-        move_side = 1
-        last_move_side = 1
-    else:  # yaw正数，偏向右，向左旋转
-        move_side = -1
-        last_move_side = -1
+    if rot_yaw < 0:
+        last_to_left = False
+        now_to_left = False
+    else:
+        last_to_left = True
+        now_to_left = True
 
     # 等待视觉测距稳定
     for i in range(0, 3, 1):
@@ -318,7 +308,7 @@ def correct_yaw(now_yaw, target_yaw, q_v2a, qin, q_i2a, qout, q_ci):
             get_error = control_communication(ctl_allStop, qin, qout, q_ci)
             return get_state
 
-        time.sleep(0.18)
+        time.sleep(0.2)
 
         if not q_v2a.empty():
             dis_list = q_v2a.get()
@@ -326,7 +316,7 @@ def correct_yaw(now_yaw, target_yaw, q_v2a, qin, q_i2a, qout, q_ci):
             dis_left = dis_list[1]
             dis_right = dis_list[2]
             # num_front = dis_list[3]
-            # print(dis_list)
+            print(dis_list)
 
         if not q_i2a.empty():
             imu_roll, imu_pitch, imu_yaw = q_i2a.get()
@@ -337,88 +327,32 @@ def correct_yaw(now_yaw, target_yaw, q_v2a, qin, q_i2a, qout, q_ci):
             rec_side_right.append(dis_right)
         if cam_yaw != -999.9:
             diff_cam_imu = cam_yaw - imu_yaw
-            rot_yaw = cam_yaw - target_yaw
 
-    print('Vision', str(cam_yaw), str(rot_yaw), str(diff_cam_imu))
-    print('IMU', str(imu_roll), str(imu_pitch), str(imu_yaw))
+    print('Yaw2' + str(cam_yaw))
 
-    while target_count <= 4:
-        if not q_v2a.empty():
-            dis_list = q_v2a.get()
-            cam_yaw = dis_list[0]
-            dis_left = dis_list[1]
-            dis_right = dis_list[2]
-            # num_front = dis_list[3]
-            # print(dis_list)
-            delay_num = 0
-        else:
-            time.sleep(0.05)
-            if not q_v2a.empty():
-                dis_list = q_v2a.get()
-                cam_yaw = dis_list[0]
-                dis_left = dis_list[1]
-                dis_right = dis_list[2]
-                # num_front = dis_list[3]
-                # print(dis_list)
-                delay_num = 1
-            else:
-                cam_yaw = dis_right = dis_left = -999.9
-        if not q_i2a.empty():
-            imu_roll, imu_pitch, imu_yaw = q_i2a.get()
-
-        if dis_left != -999.9:
-            rec_side_left.append(dis_left)
-        if dis_right != -999.9:
-            rec_side_right.append(dis_right)
-        if cam_yaw != -999.9:
-            rot_yaw = cam_yaw - target_yaw
-        else:
-            rot_yaw = 0.0
-            # rot_yaw = rot_yaw + move_side * correct_speed * angular_speed
-            # print(str(rot_yaw), '估测', str(move_side * correct_speed * angular_speed))
-
-        print('Vision', str(cam_yaw), str(rot_yaw), str(imu_yaw - diff_cam_imu))
-        # print('IMU', str(imu_roll), str(imu_pitch), str(imu_yaw))
-
-        if abs(rot_yaw) <= 3.0:  # 如果与目标角度相差不大于3，则认为已完成，
-            target_count += 1
-        else:
-            target_count = 0
-
+    while target_count <= 2:
         # 设置旋转动作
         if target_count == 0:
             # 根据偏航角设定初始旋转速度
             if abs(rot_yaw) > 20:
                 correct_speed = 40
             elif abs(rot_yaw) > 10:
-                correct_speed = 20
+                correct_speed = 25
             else:
-                correct_speed = 10
+                correct_speed = 15
 
-            if rot_yaw < 0:  # yaw负数，偏向左，向右旋转
-                move_side = 1
-            else:  # yaw正数，偏向右，向左旋转
-                move_side = -1
-
-            if last_move_side == move_side or last_move_side == 0:
-                if rot_yaw < 0:     # yaw负数，偏向左，向右旋转
-                    ctl_correctYaw = [
-                        ATTR_CONTROL_CATERPILLA_LEFT, 2, correct_speed,  # 左履带
-                        ATTR_CONTROL_CATERPILLA_RIGHT, 3, correct_speed,  # 右履带
-                    ]
-                    last_move_side = 1
-                else:       # yaw正数，偏向右，向左旋转
-                    ctl_correctYaw = [
-                        ATTR_CONTROL_CATERPILLA_LEFT, 3, correct_speed,  # 左履带
-                        ATTR_CONTROL_CATERPILLA_RIGHT, 2, correct_speed,  # 右履带
-                    ]
-                    last_move_side = -1
-            else:
+            if rot_yaw < 0:     # yaw负数，偏向左，向右旋转
                 ctl_correctYaw = [
-                    ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
-                    ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
+                    ATTR_CONTROL_CATERPILLA_LEFT, 2, correct_speed,  # 左履带
+                    ATTR_CONTROL_CATERPILLA_RIGHT, 3, correct_speed,  # 右履带
                 ]
-                last_move_side = 0
+                move_side = 1
+            else:       # yaw正数，偏向右，向左旋转
+                ctl_correctYaw = [
+                    ATTR_CONTROL_CATERPILLA_LEFT, 3, correct_speed,  # 左履带
+                    ATTR_CONTROL_CATERPILLA_RIGHT, 2, correct_speed,  # 右履带
+                ]
+                move_side = -1
         else:
             correct_speed = 0
             ctl_correctYaw = [
@@ -426,7 +360,6 @@ def correct_yaw(now_yaw, target_yaw, q_v2a, qin, q_i2a, qout, q_ci):
                 ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
             ]
             move_side = 0
-            last_move_side = 0
 
         # 发送动作命令
         get_state = control_communication(ctl_correctYaw, qin, qout, q_ci)
@@ -434,14 +367,71 @@ def correct_yaw(now_yaw, target_yaw, q_v2a, qin, q_i2a, qout, q_ci):
             get_error = control_communication(ctl_allStop, qin, qout, q_ci)
             return get_state
 
-        time.sleep(0.18 - (delay_num * 0.05))
+        time.sleep(0.15)
 
-    for i in range(0, 2, 1):
+        if not q_v2a.empty():
+            dis_list = q_v2a.get()
+            cam_yaw = dis_list[0]
+            dis_left = dis_list[1]
+            dis_right = dis_list[2]
+            # num_front = dis_list[3]
+            # print(dis_list)
+        else:
+            time.sleep(0.05)
+            dis_list = q_v2a.get()
+            cam_yaw = dis_list[0]
+            dis_left = dis_list[1]
+            dis_right = dis_list[2]
+            # num_front = dis_list[3]
+            # print(dis_list)
+        if not q_i2a.empty():
+            imu_roll, imu_pitch, imu_yaw = q_i2a.get()
+
+        # 发送动作命令
         get_state = control_communication(ctl_stop, qin, qout, q_ci)
         if get_state > 90:
             get_error = control_communication(ctl_allStop, qin, qout, q_ci)
             return get_state
-        time.sleep(0.2)
+
+        time.sleep(0.15)
+
+        if not q_v2a.empty():
+            dis_list = q_v2a.get()
+            cam_yaw = dis_list[0]
+            dis_left = dis_list[1]
+            dis_right = dis_list[2]
+            # num_front = dis_list[3]
+            # print(dis_list)
+        else:
+            time.sleep(0.05)
+            dis_list = q_v2a.get()
+            cam_yaw = dis_list[0]
+            dis_left = dis_list[1]
+            dis_right = dis_list[2]
+            # num_front = dis_list[3]
+            # print(dis_list)
+        if not q_i2a.empty():
+            imu_roll, imu_pitch, imu_yaw = q_i2a.get()
+
+        if not q_i2a.empty():
+            imu_roll, imu_pitch, imu_yaw = q_i2a.get()
+        if dis_left != -999.9:
+            rec_side_left.append(dis_left)
+        if dis_right != -999.9:
+            rec_side_right.append(dis_right)
+        if cam_yaw != -999.9:
+            rot_yaw = cam_yaw - target_yaw
+            print(str(rot_yaw), str(cam_yaw))
+        else:
+            pass
+            # rot_yaw = rot_yaw + move_side * correct_speed * angular_speed
+            # print(str(rot_yaw), '估测', str(move_side * correct_speed * angular_speed))
+
+        if abs(rot_yaw) <= 2.0:  # 如果与目标角度相差不大于1，则认为已完成，
+            target_count += 1
+        else:
+            target_count = 0
+
 
     return get_state
 
@@ -887,7 +877,7 @@ def turn_around(to_left, q_v2a, qin, q_i2a, qout, q_ci):
     now_yaw = -999.9
 
     # 根据角速度计算转动次数
-    rotate_times = int(round(180 / (int_turnSpeed * angular_speed), 0))
+    rotate_times = int(round(90 / (int_turnSpeed * angular_speed), 0))
 
     # 1.根据转向型方向，向左或向右不断旋转，根据角速度预计转到90度。如果已到边界，直接退出并返回1
     for i in range(0, times_Uturn, 1):
@@ -920,45 +910,159 @@ def turn_around(to_left, q_v2a, qin, q_i2a, qout, q_ci):
             imu_roll, imu_pitch, imu_yaw = q_i2a.get()
         if cam_yaw != -999.9:
             now_yaw = cam_yaw
-    # 2.校准90度
-    for i in range(0, 3, 1):
-        get_state = control_communication(ctl_stop, qin, qout, q_ci)
-        if get_state > 90:
-            get_error = control_communication(ctl_allStop, qin, qout, q_ci)
-            return get_state
 
-        time.sleep(0.18)
-
-        if not q_v2a.empty():
-            dis_list = q_v2a.get()
-            cam_yaw = dis_list[0]
-            side_l = dis_list[1]
-            side_r = dis_list[2]
-            # num_front = dis_list[3]
-            # print(dis_list)
-
-        if not q_i2a.empty():
-            imu_roll, imu_pitch, imu_yaw = q_i2a.get()
-        if cam_yaw != -999.9:
-            now_yaw = cam_yaw
-
-    if now_yaw != -999.9:
-        get_state = correct_yaw(now_yaw, 0.0, q_v2a, qin, q_i2a, qout, q_ci)
-        if get_state > 90:
-            get_error = control_communication(ctl_allStop, qin, qout, q_ci)
-            return get_state
-    else:
-        print('Cam Yaw not found')
-        for i in range(0, 2, 1):
-            get_state = control_communication(ctl_stop, qin, qout, q_ci)
-            if get_state > 90:
-                get_error = control_communication(ctl_allStop, qin, qout, q_ci)
-                return get_state
-            time.sleep(0.2)
-
-    return get_state
-
-
+    # if now_yaw != -999.9 and abs(now_yaw) > 5.0:
+    #     for i in range(0, 3, 1):
+    #         get_state = control_communication(ctl_stop, qin, qout, q_ci)
+    #
+    #         time.sleep(0.2)
+    #
+    #         if get_state > 90:
+    #             get_error = control_communication(ctl_allStop, qin, qout, q_ci)
+    #             return get_state
+    #         if not q_v2a.empty():
+    #             dis_list = q_v2a.get()
+    #             cam_yaw = dis_list[0]
+    #             side_l = dis_list[1]
+    #             side_r = dis_list[2]
+    #             # num_front = dis_list[3]
+    #             # print(dis_list)
+    #
+    #         if not q_i2a.empty():
+    #             imu_roll, imu_pitch, imu_yaw = q_i2a.get()
+    #         if cam_yaw != -999.9:
+    #             now_yaw = cam_yaw
+    #
+    #     loop_num = -1
+    #     while (to_left and now_yaw > 5.0) or (not to_left and now_yaw < -5.0):
+    #         if to_left:
+    #             ctl_Lturn = [
+    #                 ATTR_CONTROL_CATERPILLA_LEFT, 3, int(int_turnSpeed / 4),  # 左履带
+    #                 ATTR_CONTROL_CATERPILLA_RIGHT, 2, int(int_turnSpeed / 4),  # 右履带
+    #             ]
+    #         else:
+    #             ctl_Lturn = [
+    #                 ATTR_CONTROL_CATERPILLA_LEFT, 2, int(int_turnSpeed / 4),  # 左履带
+    #                 ATTR_CONTROL_CATERPILLA_RIGHT, 3, int(int_turnSpeed / 4),  # 右履带
+    #             ]
+    #         get_state = control_communication(ctl_Lturn, qin, qout, q_ci)
+    #         if get_state > 90:
+    #             get_error = control_communication(ctl_allStop, qin, qout, q_ci)
+    #             return get_state
+    #         # if cam_yaw != -999.9:
+    #         #     now_yaw = cam_yaw
+    #
+    #         time.sleep(0.2)
+    #         if not q_v2a.empty():
+    #             dis_list = q_v2a.get()
+    #             cam_yaw = dis_list[0]
+    #             side_l = dis_list[1]
+    #             side_r = dis_list[2]
+    #             # num_front = dis_list[3]
+    #             # print(dis_list)
+    #         if not q_i2a.empty():
+    #             imu_roll, imu_pitch, imu_yaw = q_i2a.get()
+    #         if cam_yaw != -999.9:
+    #             now_yaw = cam_yaw
+    #
+    #         if loop_num > times_Lturn or abs(now_yaw) <= 5.0 or (to_left and now_yaw < 0.0) or (not to_left and now_yaw > 0.0):
+    #             break
+#
+# # 到达终点后返回
+# def end_back(cmd_56, q_v2a, qin, q_i2a, qout, q_ci, file_address):
+#     get_state = 0
+#     moveSpeed_uTurn = 40
+#     cmd_24_rotateSpeed = CVFunc.trans_speed('40')
+#     cmd_24_moveSpeed = CVFunc.trans_speed(str(moveSpeed_uTurn))
+#     hex_turnRight = CVFunc.set_order(cmd_0_head + cmd_13_front + cmd_24_rotateSpeed + cmd_13_back + cmd_24_rotateSpeed + cmd_56)
+#     hex_turnLeft = CVFunc.set_order(cmd_0_head + cmd_13_back + cmd_24_rotateSpeed + cmd_13_front + cmd_24_rotateSpeed + cmd_56)
+#     hex_moveFront = CVFunc.set_order(cmd_0_head + cmd_13_front + cmd_24_moveSpeed + cmd_13_front + cmd_24_moveSpeed + cmd_56)
+#     imu_yaw = 0.0
+#     cam_yaw = -999.9
+#     loop_times = 0
+#     dis_laser = 999.9
+#     now_yaw = 0.0
+#
+#     # 1.向右不断旋转，直至转到180±20度
+#     while loop_times < 22:
+#         # 键盘输入急停
+#         if keyboard.is_pressed('b'):
+#             get_state, cam_yaw, dis_left, dis_right, imu_roll, imu_pitch, imu_yaw = control_communication(
+#                 hex_allStop, q_v2a, qin, q_i2a, qout, q_ci)
+#             return 96
+#
+#         loop_times += 1
+#         get_state, cam_yaw, dis_left, dis_right, imu_roll, imu_pitch, imu_yaw = control_communication(
+#             hex_turnRight, q_v2a, qin, q_i2a, qout, q_ci)
+#         if get_state > 0:
+#             get_error, cam_yaw, dis_left, dis_right, imu_roll, imu_pitch, imu_yaw = control_communication(
+#                 hex_allStop, q_v2a, qin, q_i2a, qout, q_ci)
+#             return get_state
+#
+#     # 2.校准180度
+#     for i in range(0, 3, 1):
+#         # 键盘输入急停
+#         if keyboard.is_pressed('b'):
+#             get_state, cam_yaw, dis_left, dis_right, imu_roll, imu_pitch, imu_yaw = control_communication(
+#                 hex_allStop, q_v2a, qin, q_i2a, qout, q_ci)
+#             return 96
+#
+#         get_state, cam_yaw, dis_left, dis_right, imu_roll, imu_pitch, imu_yaw = control_communication(
+#             hex_allStop, q_v2a, qin, q_i2a, qout, q_ci)
+#         if get_state > 0:
+#             get_error, cam_yaw, dis_left, dis_right, imu_roll, imu_pitch, imu_yaw = control_communication(
+#                 hex_allStop, q_v2a, qin, q_i2a, qout, q_ci)
+#             return get_state
+#         if cam_yaw != -999.9:
+#             now_yaw = cam_yaw
+#     get_state = correct_yaw(now_yaw, 0.0, cmd_56, q_v2a, qin, q_i2a, qout, q_ci, file_address)
+#     cam_yaw = 0.0
+#     if get_state > 0:
+#         get_error, cam_yaw, dis_left, dis_right, imu_roll, imu_pitch, imu_yaw = control_communication(
+#             hex_allStop, q_v2a, qin, q_i2a, qout, q_ci)
+#         return get_state
+#
+#     # 3.向前移动直至到边界
+#     while dis_laser > laser_threshold:
+#         # 键盘输入急停
+#         if keyboard.is_pressed('b'):
+#             get_state, cam_yaw, dis_left, dis_right, imu_roll, imu_pitch, imu_yaw = control_communication(
+#                 hex_allStop, q_v2a, qin, q_i2a, qout, q_ci)
+#             return 96
+#
+#         if wash_thre_yaw < abs(cam_yaw):
+#             speed_left = moveSpeed_uTurn - int(round(cam_yaw, 0))
+#             if speed_left < 0:
+#                 speed_left = 0
+#             elif speed_left > 100:
+#                 speed_left = 100
+#             cmd_2_corYaw = CVFunc.trans_speed(str(speed_left))
+#             speed_right = moveSpeed_uTurn + int(round(cam_yaw, 0))
+#             if speed_right < 0:
+#                 speed_right = 0
+#             elif speed_right > 100:
+#                 speed_right = 100
+#             cmd_4_corYaw = CVFunc.trans_speed(str(speed_right))
+#             ctl_order = CVFunc.set_order(
+#                 cmd_0_head + cmd_13_front + cmd_2_corYaw + cmd_13_front + cmd_4_corYaw + cmd_56)
+#         else:
+#             ctl_order = hex_moveFront
+#         get_state, cam_yaw, dis_left, dis_right, imu_roll, imu_pitch, imu_yaw = control_communication(
+#             ctl_order, q_v2a, qin, q_i2a, qout, q_ci)
+#         if get_state > 0:
+#             get_error, cam_yaw, dis_left, dis_right, imu_roll, imu_pitch, imu_yaw = control_communication(
+#                 hex_allStop, q_v2a, qin, q_i2a, qout, q_ci)
+#             return get_state
+#
+#         if keyboard.is_pressed('e') or dis_laser < laser_threshold:
+#             get_state, cam_yaw, dis_left, dis_right, imu_roll, imu_pitch, imu_yaw = control_communication(
+#                 hex_allStop, q_v2a, qin, q_i2a, qout, q_ci)
+#             get_state = 1
+#             break
+#
+#     return get_state
+#
+#
 # 90度“L”型转向动作
 def l_turn(to_left, q_v2a, qin, q_i2a, qout, q_ci):
     global para_lines
@@ -1012,35 +1116,10 @@ def l_turn(to_left, q_v2a, qin, q_i2a, qout, q_ci):
         if get_state > 90:
             get_error = control_communication(ctl_allStop, qin, qout, q_ci)
             return get_state
-        elif get_state > 0:
-            print('To Board', str(get_state))
-            get_error = control_communication(ctl_allStop, qin, qout, q_ci)
-            return get_state
         # if cam_yaw != -999.9:
         #     now_yaw = cam_yaw
 
-        time.sleep(0.18)
-        if not q_v2a.empty():
-            dis_list = q_v2a.get()
-            cam_yaw = dis_list[0]
-            side_l = dis_list[1]
-            side_r = dis_list[2]
-            # num_front = dis_list[3]
-            # print(dis_list)
-        if not q_i2a.empty():
-            imu_roll, imu_pitch, imu_yaw = q_i2a.get()
-        if cam_yaw != -999.9:
-            now_yaw = cam_yaw
-
-    # 2.校准90度
-    for i in range(0, 3, 1):
-        get_state = control_communication(ctl_stop, qin, qout, q_ci)
-
         time.sleep(0.2)
-
-        if get_state > 90:
-            get_error = control_communication(ctl_allStop, qin, qout, q_ci)
-            return get_state
         if not q_v2a.empty():
             dis_list = q_v2a.get()
             cam_yaw = dis_list[0]
@@ -1048,26 +1127,101 @@ def l_turn(to_left, q_v2a, qin, q_i2a, qout, q_ci):
             side_r = dis_list[2]
             # num_front = dis_list[3]
             # print(dis_list)
-
         if not q_i2a.empty():
             imu_roll, imu_pitch, imu_yaw = q_i2a.get()
         if cam_yaw != -999.9:
             now_yaw = cam_yaw
 
-    if now_yaw != -999.9:
-        print('Correct', str(now_yaw))
-        get_state = correct_yaw(now_yaw, 0.0, q_v2a, qin, q_i2a, qout, q_ci)
-        if get_state > 90:
-            get_error = control_communication(ctl_allStop, qin, qout, q_ci)
-            return get_state
-    else:
-        print('Cam Yaw not found')
-        for i in range(0, 2, 1):
-            get_stop = control_communication(ctl_stop, qin, qout, q_ci)
-            if get_stop > 90:
-                get_error = control_communication(ctl_allStop, qin, qout, q_ci)
-                return get_stop
-            time.sleep(0.2)
+    # if now_yaw != -999.9 and abs(now_yaw) > 5.0:
+    #     for i in range(0, 5, 1):
+    #         get_state = control_communication(ctl_stop, qin, qout, q_ci)
+    #
+    #         time.sleep(0.2)
+    #
+    #         if get_state > 90:
+    #             get_error = control_communication(ctl_allStop, qin, qout, q_ci)
+    #             return get_state
+    #         if not q_v2a.empty():
+    #             dis_list = q_v2a.get()
+    #             cam_yaw = dis_list[0]
+    #             side_l = dis_list[1]
+    #             side_r = dis_list[2]
+    #             # num_front = dis_list[3]
+    #             # print(dis_list)
+    #
+    #         if not q_i2a.empty():
+    #             imu_roll, imu_pitch, imu_yaw = q_i2a.get()
+    #         if cam_yaw != -999.9:
+    #             now_yaw = cam_yaw
+    #
+    #     loop_num = -1
+    #     if abs(now_yaw) > 5.0:
+    #         while (to_left and now_yaw > 5.0) or (not to_left and now_yaw < -5.0):
+    #             if to_left:
+    #                 ctl_Lturn = [
+    #                     ATTR_CONTROL_CATERPILLA_LEFT, 3, int(int_turnSpeed / 4),  # 左履带
+    #                     ATTR_CONTROL_CATERPILLA_RIGHT, 2, int(int_turnSpeed / 4),  # 右履带
+    #                 ]
+    #             else:
+    #                 ctl_Lturn = [
+    #                     ATTR_CONTROL_CATERPILLA_LEFT, 2, int(int_turnSpeed / 4),  # 左履带
+    #                     ATTR_CONTROL_CATERPILLA_RIGHT, 3, int(int_turnSpeed / 4),  # 右履带
+    #                 ]
+    #             get_state = control_communication(ctl_Lturn, qin, qout, q_ci)
+    #             if get_state > 90:
+    #                 get_error = control_communication(ctl_allStop, qin, qout, q_ci)
+    #                 return get_state
+    #             # if cam_yaw != -999.9:
+    #             #     now_yaw = cam_yaw
+    #
+    #             time.sleep(0.2)
+    #             if not q_v2a.empty():
+    #                 dis_list = q_v2a.get()
+    #                 cam_yaw = dis_list[0]
+    #                 side_l = dis_list[1]
+    #                 side_r = dis_list[2]
+    #                 # num_front = dis_list[3]
+    #                 # print(dis_list)
+    #             if not q_i2a.empty():
+    #                 imu_roll, imu_pitch, imu_yaw = q_i2a.get()
+    #             if cam_yaw != -999.9:
+    #                 now_yaw = cam_yaw
+    #
+    #             if loop_num > times_Lturn or abs(now_yaw) <= 10.0 or (to_left and now_yaw < 0.0) or (not to_left and now_yaw > 0.0):
+    #                 get_stop = control_communication(ctl_stop, qin, qout, q_ci)
+    #                 break
+
+
+    # # 2.校准90度
+    # for i in range(0, 3, 1):
+    #     get_state = control_communication(ctl_allStop, qin, qout, q_ci)
+    #
+    #     time.sleep(0.2)
+    #
+    #     if get_state > 90:
+    #         get_error = control_communication(ctl_allStop, qin, qout, q_ci)
+    #         return get_state
+    #     if not q_v2a.empty():
+    #         dis_list = q_v2a.get()
+    #         cam_yaw = dis_list[0]
+    #         side_l = dis_list[1]
+    #         side_r = dis_list[2]
+    #         # num_front = dis_list[3]
+    #         print(dis_list)
+    #
+    #     if not q_i2a.empty():
+    #         imu_roll, imu_pitch, imu_yaw = q_i2a.get()
+    #     if cam_yaw != -999.9:
+    #         now_yaw = cam_yaw
+    # if now_yaw != -999.9:
+    #     get_state = correct_yaw(now_yaw, 0.0, q_v2a, qin, q_i2a, qout, q_ci)
+    #     if get_state > 90:
+    #         get_error = control_communication(ctl_allStop, qin, qout, q_ci)
+    #         return get_state
+    # else:
+    #     print('Cam Yaw not found')
+
+    get_stop = control_communication(ctl_stop, qin, qout, q_ci)
 
     return get_state
 
@@ -1112,7 +1266,6 @@ def go_straight(move_type, move_speed, move_times, q_v2a, qin, q_i2a, qout, q_ci
 
     slow_num = 0
     now_speed = move_speed
-    panel_width = 1100
 
     ctl_go = [
         ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
@@ -1125,14 +1278,14 @@ def go_straight(move_type, move_speed, move_times, q_v2a, qin, q_i2a, qout, q_ci
     # else:
     #     loop_times = move_times
     loop_times = move_times
-    # print('Times' + str(loop_times))
+    print('Times' + str(loop_times))
     if not q_v2a.empty():
         dis_list = q_v2a.get()
         cam_yaw = dis_list[0]
         dis_left = dis_list[1]
         dis_right = dis_list[2]
         # num_front = dis_list[3]
-        # print(dis_list)
+        print(dis_list)
 
     if not q_i2a.empty():
         imu_roll, imu_pitch, imu_yaw = q_i2a.get()
@@ -1149,7 +1302,7 @@ def go_straight(move_type, move_speed, move_times, q_v2a, qin, q_i2a, qout, q_ci
             dis_left = dis_list[1]
             dis_right = dis_list[2]
             # num_front = dis_list[3]
-            # print('Vision', str(cam_yaw), str(dis_left), str(dis_right))
+            print(dis_list)
         else:
             time.sleep(0.05)
             if not q_v2a.empty():
@@ -1158,13 +1311,11 @@ def go_straight(move_type, move_speed, move_times, q_v2a, qin, q_i2a, qout, q_ci
                 dis_left = dis_list[1]
                 dis_right = dis_list[2]
                 # num_front = dis_list[3]
-                # print('Vision', str(cam_yaw), str(dis_left), str(dis_right))
+                print(dis_list)
             else:
                 cam_yaw = dis_left = dis_right = -999.9
-                # print('No Vision')
         if not q_i2a.empty():
             imu_roll, imu_pitch, imu_yaw = q_i2a.get()
-            # print('IMU', str(imu_roll), str(imu_pitch), str(imu_yaw))
         if cam_yaw != -999.9:
             now_yaw = cam_yaw
         else:
@@ -1250,23 +1401,13 @@ def go_straight(move_type, move_speed, move_times, q_v2a, qin, q_i2a, qout, q_ci
                 ]
         elif move_type == 4:       # 测试直行并带偏航差速调整
             if dis_left != -999.9 and dis_right != -999.9:
-                # now_devision = dis_left - dis_right
-                now_devision = dis_left - vehicle_left
-                panel_width = dis_left + dis_right
-                print('Panel width', str(panel_width))
-            # elif dis_left == -999.9 and dis_right != -999.9:
-            #     now_devision = (panel_width / 2) - dis_right
-            elif dis_left != -999.9 and dis_right == -999.9:
-                now_devision = dis_left - vehicle_left
+                now_devision = dis_left - dis_right
             else:
                 now_devision = 0.0
             if cam_yaw == -999.9 and dis_left == -999.9 and dis_right == -999.9:
                 slow_num += 1
                 if loop_num < 10:
-                    if slow_num < 3:
-                        now_speed = move_speed
-                    else:
-                        now_speed = move_speed / 2
+                    now_speed = move_speed / 2
                 else:
                     if slow_num < 6:
                         now_speed = move_speed
@@ -1277,7 +1418,6 @@ def go_straight(move_type, move_speed, move_times, q_v2a, qin, q_i2a, qout, q_ci
                 now_speed = move_speed
 
             if wash_thre_deviation < abs(now_devision):
-                str_show = 'Straight'
                 speed_left = now_speed
                 speed_right = now_speed
                 if now_devision < 0:
@@ -1285,7 +1425,6 @@ def go_straight(move_type, move_speed, move_times, q_v2a, qin, q_i2a, qout, q_ci
                         if now_yaw < 10.0:
                             speed_left = now_speed + 20
                             speed_right = now_speed - 20
-                            str_show = 'Right'
                         else:
                             speed_left = now_speed
                             speed_right = now_speed
@@ -1297,7 +1436,6 @@ def go_straight(move_type, move_speed, move_times, q_v2a, qin, q_i2a, qout, q_ci
                         if now_yaw > -10.0:
                             speed_left = now_speed - 20
                             speed_right = now_speed + 20
-                            str_show = 'Left'
                         else:
                             speed_left = now_speed
                             speed_right = now_speed
@@ -1317,8 +1455,6 @@ def go_straight(move_type, move_speed, move_times, q_v2a, qin, q_i2a, qout, q_ci
                     ATTR_CONTROL_CATERPILLA_LEFT, 2, int(speed_left),  # 左履带
                     ATTR_CONTROL_CATERPILLA_RIGHT, 2, int(speed_right),  # 右履带
                 ]
-                print('dev', str(now_devision), str_show)
-
             elif wash_thre_yaw < abs(now_yaw):
                 speed_left = now_speed - int(round(now_yaw * 2, 0))
                 speed_right = now_speed + int(round(now_yaw * 2, 0))
@@ -1335,13 +1471,13 @@ def go_straight(move_type, move_speed, move_times, q_v2a, qin, q_i2a, qout, q_ci
                     ATTR_CONTROL_CATERPILLA_LEFT, 2, int(speed_left),  # 左履带
                     ATTR_CONTROL_CATERPILLA_RIGHT, 2, int(speed_right),  # 右履带
                 ]
-                print('yaw', str(now_yaw))
             else:
                 ctl_go = [
                     ATTR_CONTROL_CATERPILLA_LEFT, 2, int(now_speed),  # 左履带
                     ATTR_CONTROL_CATERPILLA_RIGHT, 2, int(now_speed),  # 右履带
                 ]
         elif move_type == 5:       # Stop
+
             ctl_go = [
                 ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
                 ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
@@ -1357,107 +1493,24 @@ def go_straight(move_type, move_speed, move_times, q_v2a, qin, q_i2a, qout, q_ci
             print('Board')
             get_error = control_communication(ctl_stop, qin, qout, q_ci)
             get_state = 1
-            return get_state
+            break
         elif get_state == 2 and move_type == 3:
             print('Back Board')
             get_error = control_communication(ctl_stop, qin, qout, q_ci)
             get_state = 2
-            return get_state
-        elif get_state == 3 or get_state == 4:
-            print('Side Board')
-            get_error = control_communication(ctl_stop, qin, qout, q_ci)
-            return get_state
-        elif loop_num > loop_times and loop_times != -1:
+            break
+
+        if loop_num > loop_times and loop_times != -1:
             get_error = control_communication(ctl_stop, qin, qout, q_ci)
             get_state = 0
-            return get_state
+            break
 
         time.sleep(0.2)
 
-    for i in range(0, 2, 1):
-        get_state = control_communication(ctl_stop, qin, qout, q_ci)
-        if get_state > 90:
-            get_error = control_communication(ctl_allStop, qin, qout, q_ci)
-            return get_state
-        time.sleep(0.2)
-
-    return get_state
-
-
-def test_moveing(move_type, move_speed, move_times, q_v2a, qin, q_i2a, qout, q_ci):
-    global rec_side_left, rec_side_right, ctl_order, para_lines
-    # 机身尺寸、光伏板尺寸
-    vehicle_left = int(para_lines[0].strip('\n'))
-    vehicle_right = int(para_lines[1].strip('\n'))
-    vehicle_front = int(para_lines[2].strip('\n'))
-    vehicle_front_falling = int(para_lines[3].strip('\n'))
-    vehicle_width = vehicle_left + vehicle_right
-    # 校正阈值(度或毫米)
-    wash_thre_yaw = float(para_lines[4].strip('\n'))
-    correct_thre_yaw = float(para_lines[5].strip('\n'))
-    wash_thre_deviation = float(para_lines[6].strip('\n'))
-    correct_thre_deviation = float(para_lines[7].strip('\n'))
-    # 机器速率
-    straight_speed = float(para_lines[8].strip('\n'))
-    angular_speed = float(para_lines[9].strip('\n'))
-    # 运行速度
-    int_washSpeed = int(para_lines[10].strip('\n'))
-    int_moveSpeed = int(para_lines[11].strip('\n'))
-    int_turnSpeed = int(para_lines[12].strip('\n'))
-    # Times
-    times_Lturn = int(para_lines[13].strip('\n'))
-    times_GoBack = int(para_lines[14].strip('\n'))
-    times_ChangeLine = int(para_lines[15].strip('\n'))
-    times_Uturn = int(para_lines[16].strip('\n'))
-
-    ctl_move = [
-        ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
-        ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
-    ]
-
-    for loop_num in range(0, move_times, 1):
-        print(loop_num)
-        if move_type == 0:
-            ctl_move = [
-                ATTR_CONTROL_CATERPILLA_LEFT, 2, move_speed,  # 左履带
-                ATTR_CONTROL_CATERPILLA_RIGHT, 2, move_speed,  # 右履带
-            ]
-        elif move_type == 1:
-            ctl_move = [
-                ATTR_CONTROL_CATERPILLA_LEFT, 3, move_speed,  # 左履带
-                ATTR_CONTROL_CATERPILLA_RIGHT, 3, move_speed,  # 右履带
-            ]
-        elif move_type == 2:
-            ctl_move = [
-                ATTR_CONTROL_CATERPILLA_LEFT, 3, move_speed,  # 左履带
-                ATTR_CONTROL_CATERPILLA_RIGHT, 2, move_speed,  # 右履带
-            ]
-        elif move_type == 3:
-            ctl_move = [
-                ATTR_CONTROL_CATERPILLA_LEFT, 2, move_speed,  # 左履带
-                ATTR_CONTROL_CATERPILLA_RIGHT, 3, move_speed,  # 右履带
-            ]
-        else:
-            ctl_move = [
-                ATTR_CONTROL_CATERPILLA_LEFT, 0, 0,  # 左履带
-                ATTR_CONTROL_CATERPILLA_RIGHT, 0, 0,  # 右履带
-            ]
-        get_state = control_communication(ctl_move, qin, qout, q_ci)
-        if get_state > 90:
-            get_error = control_communication(ctl_allStop, qin, qout, q_ci)
-            return get_state
-        elif 0 < get_state < 5:
-            get_error = control_communication(ctl_allStop, qin, qout, q_ci)
-            return get_state
-
-        time.sleep(0.18)
-
-    for i in range(0, 2, 1):
-        get_stop = control_communication(ctl_stop, qin, qout, q_ci)
-        if get_stop > 90:
-            get_error = control_communication(ctl_allStop, qin, qout, q_ci)
-            return get_state
-        time.sleep(0.2)
+    get_stop = control_communication(ctl_stop, qin, qout, q_ci)
+    if get_state > 90:
+        get_error = control_communication(ctl_allStop, qin, qout, q_ci)
+        return get_state
 
     return get_state
 

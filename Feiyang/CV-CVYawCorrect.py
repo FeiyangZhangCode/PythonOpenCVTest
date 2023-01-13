@@ -1,13 +1,8 @@
-import os
 import time
-import datetime
-import shutil
 import cv2
-import CVFunc
 import numpy as np
 import math
 import CVFunc
-import xlwt
 import matplotlib.pyplot as plt
 
 file_model = open('Model.txt', 'r', encoding='utf-8')
@@ -180,7 +175,7 @@ err_mess = ''  # 报错信息
 time_mess = ''  # 时间信息
 ret_value = [0] * 4  # 0是水平线，1是左垂线，2是右垂线，3是超声波
 
-rgb_frame = cv2.imread('./TestData/Angle/10d81.jpg')
+rgb_frame = cv2.imread('../TestData/Angle/10d81.jpg')
 angle_set = -10.81  # 车头向左偏，需要顺时针旋转，角度为负。车头向右偏，需要逆时针旋转，角度为正。
 img_height = int(rgb_frame.shape[0])
 img_width = int(rgb_frame.shape[1])

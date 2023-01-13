@@ -50,7 +50,7 @@ def distance_get(q_cap, c_id, q_v2a, q_yi, lock_ser, file_address, q_v2s):
     vehicle_width = vehicle_left + vehicle_right
 
     # 读取模型参数
-    file_model = open('../Model-360.txt', 'r', encoding='utf-8')
+    file_model = open('../Feiyang/Model-360.txt', 'r', encoding='utf-8')
     para_lines = file_model.readlines()
     file_model.close()
     model_F = float(para_lines[0].strip('\n'))

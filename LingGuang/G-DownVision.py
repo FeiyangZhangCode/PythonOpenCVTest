@@ -117,7 +117,7 @@ def get_hough(gra_img):
 
 start_time = time.time()
 # 读取模型参数
-file_model = open('../Model.txt', 'r', encoding='utf-8')
+file_model = open('../Feiyang/Model.txt', 'r', encoding='utf-8')
 para_lines = file_model.readlines()
 file_model.close()
 model_F = float(para_lines[0].strip('\n'))

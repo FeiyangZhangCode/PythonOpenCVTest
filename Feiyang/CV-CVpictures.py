@@ -1,7 +1,6 @@
 import os
 import time
 import datetime
-import shutil
 import cv2
 import CVFunc
 import numpy as np
@@ -28,10 +27,10 @@ if __name__ == '__main__':
     file_address += '/'
 
     # 提取两个摄像头记录的Excel表
-    workbook_0 = xlrd3.open_workbook('./TestData/C/0.xls')
+    workbook_0 = xlrd3.open_workbook('../TestData/C/0.xls')
     table_0 = workbook_0.sheet_by_name('Data')
     nrows_0 = table_0.nrows
-    workbook_1 = xlrd3.open_workbook('./TestData/C/1.xls')
+    workbook_1 = xlrd3.open_workbook('../TestData/C/1.xls')
     table_1 = workbook_1.sheet_by_name('Data')
     nrows_1 = table_1.nrows
 

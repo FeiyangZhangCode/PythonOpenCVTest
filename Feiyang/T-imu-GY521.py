@@ -117,7 +117,7 @@ if __name__ == '__main__':
     while True:
         cv2.waitKey(50)
         flo_temp, flo_rX, flo_rY, get_mess = get_imu_data()
-        file_rec = open('./TestData/MPU-UpDownTest.txt', 'a')
+        file_rec = open('../TestData/MPU-UpDownTest.txt', 'a')
         file_rec.write(get_mess)
         file_rec.close()
         print('T: ', str(round(flo_temp, 2)))
